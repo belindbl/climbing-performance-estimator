@@ -1,10 +1,10 @@
 # Ignore everything
 *
 
-# Allow directories so Git can descend into them
+# Allow directories
 !*/
 
-# Allow selected folders and their contents
+# Allow project folders
 !climbing_performance/
 !climbing_performance/**
 !notebooks/
@@ -12,13 +12,16 @@
 !tests/
 !tests/**
 
-# Allow selected root files
+# Allow root files
 !.gitignore
 !LICENCE
-!README.md
 !readme.md
 !main.py
 !pyproject.toml
 
-# Explicitly ignore generated packaging metadata
-climbing_performance.egg-info/
+# --- IMPORTANT: override whitelist for cache ---
+__pycache__/
+*.pyc
+
+# Virtual environment (must override whitelist)
+.venv/
