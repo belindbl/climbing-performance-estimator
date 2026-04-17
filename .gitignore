@@ -1,0 +1,18 @@
+# Ignore everything
+*
+
+# Allow directory traversal
+!*/
+
+# Core project structure
+!src/
+!notebooks/
+!README.md
+!LICENSE
+!.gitignore
+
+# Allow Python source files
+!*.py
+
+# Allow notebooks
+!*.ipynb
