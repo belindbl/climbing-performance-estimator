@@ -1,18 +1,24 @@
 # Ignore everything
 *
 
-# Allow directory traversal
+# Allow directories so Git can descend into them
 !*/
 
-# Core project structure
-!src/
+# Allow selected folders and their contents
+!climbing_performance/
+!climbing_performance/**
 !notebooks/
-!README.md
-!LICENSE
+!notebooks/**
+!tests/
+!tests/**
+
+# Allow selected root files
 !.gitignore
+!LICENCE
+!README.md
+!readme.md
+!main.py
+!pyproject.toml
 
-# Allow Python source files
-!*.py
-
-# Allow notebooks
-!*.ipynb
+# Explicitly ignore generated packaging metadata
+climbing_performance.egg-info/
