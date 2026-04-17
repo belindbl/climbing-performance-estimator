@@ -1,8 +1,0 @@
-Metadata-Version: 2.4
-Name: climbing-performance
-Version: 0.1.0
-Summary: Framework for estimating climbing performance metrics in cycling
-Requires-Python: >=3.12
-Description-Content-Type: text/markdown
-
-# This is a pet-project to generate climbing performance metrics
