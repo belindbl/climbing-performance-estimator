@@ -32,3 +32,15 @@ class Climb:
     @staticmethod
     def default():
         return Climb()
+    
+@dataclass
+class Weather:
+    temperature_c: float = 20.0
+    pressure_hpa: float = 1013.25
+    humidity_percent: float = 50.0
+    wind_speed_mps: float = 0.0
+    wind_direction_deg: float = 0.0
+
+    @staticmethod
+    def default():
+        return Weather()

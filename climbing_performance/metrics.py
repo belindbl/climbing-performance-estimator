@@ -35,15 +35,49 @@ def compute_vertical_speed(elevation_gain_m: float, time_s: float) -> float:
     validate_non_negative(elevation_gain_m, "elevation_gain_m")
     return elevation_gain_m / time_s  # m/s
 
+def air_density_from_weather(
+    altitude_m: float,
+    temperature_c: float,
+    pressure_hpa: float,
+) -> float:
+    """
+    Compute air density using the ideal gas law.
+
+    Parameters:
+    - altitude_m: altitude (for validation only here)
+    - temperature_c: temperature in °C
+    - pressure_hpa: pressure in hPa
+
+    Returns:
+    - air density in kg/m³
+    """
+    if altitude_m < 0:
+        altitude_m = 0.0
+
+    temperature_k = temperature_c + 273.15
+    pressure_pa = pressure_hpa * 100.0
+
+    R = 287.05  # J/(kg·K) for dry air
+
+    return pressure_pa / (R * temperature_k)
 
 def air_density_at_altitude(avg_altitude_m: float) -> float:
     if avg_altitude_m < 0:
         avg_altitude_m = 0.0
 
-    rho0 = 1.225
+    rho0 = 1.225  # kg/m³ at sea level
     scale_height_m = 8500.0
     return rho0 * math.exp(-avg_altitude_m / scale_height_m)
 
+def compute_air_speed(v_road: float, v_headwind_m_s: float) -> float:
+    """"
+    compute relative air speed
+    
+    v_headwind_m_s:
+        positive = headwind
+        negative = tailwind
+    """
+    return v_road + v_headwind_m_s
 
 def estimate_power_components(rider: Rider, bike: Bike, climb: Climb) -> dict:
     validate_positive(rider.mass_kg, "rider.mass_kg")
@@ -64,7 +98,10 @@ def estimate_power_components(rider: Rider, bike: Bike, climb: Climb) -> dict:
 
     rho = air_density_at_altitude(climb.avg_altitude_m)
     cda = bike.drag_coefficient * bike.frontal_area_m2
-    power_aero = 0.5 * rho * cda * (v_road ** 3)
+    #TODO disentangle v_headwind from the code and add it as an input parameter or
+    #retrieve it from weather api
+    v_air = compute_air_speed(v_road, v_headwind_m_s=0.0)
+    power_aero = 0.5 * rho * cda * (v_air ** 3)
 
     total_power = power_gravity + power_rolling + power_aero
 
