@@ -1,19 +1,21 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from climbing_performance.gpx import GPXRoute, parse_gpx
 from climbing_performance.aslp import summarise_aslp
 from climbing_performance.metrics import (
     air_density_at_altitude,
+    air_density_at_altitude_and_temperature,
     compute_air_speed,
     compute_gradient,
     compute_road_speed,
     compute_road_speed_km_per_h,
     compute_vam,
     compute_vertical_speed,
+    drivetrain_adjusted_power,
     estimate_watts_per_kg,
     summarise_full_performance,
 )
@@ -27,6 +29,7 @@ from climbing_performance.weather_cache import cached_fetch_hourly_weather
 
 
 WeatherFetcher = Callable[[float, float, str, str], list[WeatherSample]]
+ETALON_RIDER_MASS_KG = 60.0
 
 
 @dataclass(frozen=True)
@@ -133,17 +136,24 @@ def summarise_gpx_performance(
     weather_source: str = "auto",
     include_weather: bool = True,
     wind_exposure_factor: float = 1.0,
+    weather_temperature_c: float | None = None,
+    weather_wind_speed_m_s: float | None = None,
+    weather_wind_direction_deg: float | None = None,
     segment_adjustments: list[RouteSegmentAdjustment] | None = None,
     weather_fetcher: WeatherFetcher | None = None,
+    drivetrain_efficiency: float = 1.0,
 ) -> dict:
     if not 0.0 <= wind_exposure_factor <= 1.0:
         raise ValueError("wind_exposure_factor must be between 0 and 1.")
+    if not 0.0 < drivetrain_efficiency <= 1.0:
+        raise ValueError("drivetrain_efficiency must be > 0 and <= 1.")
 
     route = parse_gpx(gpx_path)
     climb = route_to_performance_climb(route)
 
     weather_context = None
     headwind_m_s = 0.0
+    air_density_kg_m3 = None
 
     if include_weather:
         weather_context = fetch_route_weather_context(
@@ -151,7 +161,22 @@ def summarise_gpx_performance(
             source=weather_source,
             fetcher=weather_fetcher,
         )
+        weather_context = _with_weather_overrides(
+            weather_context,
+            temperature_c=weather_temperature_c,
+            wind_speed_m_s=weather_wind_speed_m_s,
+            wind_direction_deg=weather_wind_direction_deg,
+        )
         headwind_m_s = weather_context.headwind_m_s * wind_exposure_factor
+        air_density_kg_m3 = air_density_at_altitude_and_temperature(
+            climb.avg_altitude_m,
+            weather_context.sample.temperature_c,
+        )
+    elif weather_temperature_c is not None:
+        air_density_kg_m3 = air_density_at_altitude_and_temperature(
+            climb.avg_altitude_m,
+            weather_temperature_c,
+        )
 
     if segment_adjustments:
         summary = summarise_segmented_route_performance(
@@ -161,6 +186,18 @@ def summarise_gpx_performance(
             segment_adjustments=segment_adjustments,
             weather_context=weather_context,
             wind_exposure_factor=wind_exposure_factor,
+            air_density_kg_m3=air_density_kg_m3,
+            drivetrain_efficiency=drivetrain_efficiency,
+        )
+        etalon_summary = summarise_segmented_route_performance(
+            route,
+            Rider(mass_kg=ETALON_RIDER_MASS_KG),
+            bike,
+            segment_adjustments=segment_adjustments,
+            weather_context=weather_context,
+            wind_exposure_factor=wind_exposure_factor,
+            air_density_kg_m3=air_density_kg_m3,
+            drivetrain_efficiency=drivetrain_efficiency,
         )
     else:
         summary = summarise_full_performance(
@@ -168,10 +205,24 @@ def summarise_gpx_performance(
             bike,
             climb,
             headwind_m_s=headwind_m_s,
+            air_density_kg_m3=air_density_kg_m3,
+            drivetrain_efficiency=drivetrain_efficiency,
+        )
+        etalon_summary = summarise_full_performance(
+            Rider(mass_kg=ETALON_RIDER_MASS_KG),
+            bike,
+            climb,
+            headwind_m_s=headwind_m_s,
+            air_density_kg_m3=air_density_kg_m3,
+            drivetrain_efficiency=drivetrain_efficiency,
         )
 
     result = {
         **summary,
+        "etalon_rider_mass_kg": ETALON_RIDER_MASS_KG,
+        "etalon_total_power_w": etalon_summary["total_power_w"],
+        "etalon_crank_power_w": etalon_summary["crank_power_w"],
+        "etalon_watts_per_kg": etalon_summary["crank_watts_per_kg"],
         "climb_distance_m": climb.distance_m,
         "climb_elevation_gain_m": climb.elevation_gain_m,
         "climb_time_s": climb.time_s,
@@ -206,6 +257,52 @@ def summarise_gpx_performance(
     return result
 
 
+def _with_weather_overrides(
+    context: RouteWeatherContext,
+    *,
+    temperature_c: float | None = None,
+    wind_speed_m_s: float | None = None,
+    wind_direction_deg: float | None = None,
+) -> RouteWeatherContext:
+    if (
+        temperature_c is None
+        and wind_speed_m_s is None
+        and wind_direction_deg is None
+    ):
+        return context
+
+    sample = replace(
+        context.sample,
+        temperature_c=(
+            context.sample.temperature_c
+            if temperature_c is None
+            else float(temperature_c)
+        ),
+        wind_speed_m_s=(
+            context.sample.wind_speed_m_s
+            if wind_speed_m_s is None
+            else float(wind_speed_m_s)
+        ),
+        wind_direction_deg=(
+            context.sample.wind_direction_deg
+            if wind_direction_deg is None
+            else float(wind_direction_deg) % 360.0
+        ),
+    )
+    headwind, crosswind = wind_to_components(
+        wind_speed_m_s=sample.wind_speed_m_s,
+        wind_direction_deg=sample.wind_direction_deg,
+        rider_heading_deg=context.rider_heading_deg,
+    )
+
+    return RouteWeatherContext(
+        sample=sample,
+        rider_heading_deg=context.rider_heading_deg,
+        headwind_m_s=headwind,
+        crosswind_m_s=crosswind,
+    )
+
+
 def summarise_segmented_route_performance(
     route: GPXRoute,
     rider: Rider,
@@ -214,11 +311,17 @@ def summarise_segmented_route_performance(
     segment_adjustments: list[RouteSegmentAdjustment],
     weather_context: RouteWeatherContext | None = None,
     wind_exposure_factor: float = 1.0,
+    air_density_kg_m3: float | None = None,
+    drivetrain_efficiency: float = 1.0,
 ) -> dict:
     climb = route_to_performance_climb(route)
     total_mass = rider.mass_kg + bike.mass_kg
     cda = bike.drag_coefficient * bike.frontal_area_m2
-    rho = air_density_at_altitude(climb.avg_altitude_m)
+    rho = (
+        air_density_at_altitude(climb.avg_altitude_m)
+        if air_density_kg_m3 is None
+        else air_density_kg_m3
+    )
     g = 9.81
 
     gravity_work_j = 0.0
@@ -292,6 +395,7 @@ def summarise_segmented_route_performance(
                 adjustment_summaries[adjustment.name]["aero_work_j"] += aero_work
 
     total_power = (gravity_work_j + rolling_work_j + aero_work_j) / climb.time_s
+    crank_power = drivetrain_adjusted_power(total_power, drivetrain_efficiency)
     power_gravity = gravity_work_j / climb.time_s
     power_rolling = rolling_work_j / climb.time_s
     power_aero = aero_work_j / climb.time_s
@@ -321,6 +425,10 @@ def summarise_segmented_route_performance(
         "power_aero_w": power_aero,
         "total_power_w": total_power,
         "watts_per_kg": estimate_watts_per_kg(total_power, rider),
+        "crank_power_w": crank_power,
+        "crank_watts_per_kg": estimate_watts_per_kg(crank_power, rider),
+        "drivetrain_efficiency": drivetrain_efficiency,
+        "drivetrain_loss_w": crank_power - total_power,
         "headwind_m_s": 0.0,
         "air_density_kg_m3": rho,
         "segment_adjustments": {

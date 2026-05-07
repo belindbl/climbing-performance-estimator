@@ -14,7 +14,7 @@ class Rider:
 class Bike:
     mass_kg: float = 8.0
     drag_coefficient: float = 1.0
-    frontal_area_m2: float = 0.37
+    frontal_area_m2: float = 0.32
     rolling_resistance_coefficient: float = 0.004
 
     @staticmethod

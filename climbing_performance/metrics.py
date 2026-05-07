@@ -73,6 +73,23 @@ def air_density_at_altitude(avg_altitude_m: float) -> float:
     scale_height_m = 8500.0
     return rho0 * math.exp(-avg_altitude_m / scale_height_m)
 
+
+def air_density_at_altitude_and_temperature(
+    avg_altitude_m: float,
+    temperature_c: float,
+) -> float:
+    """Estimate density from altitude pressure decay and actual temperature."""
+    if avg_altitude_m < 0:
+        avg_altitude_m = 0.0
+
+    standard_temperature_k = 288.15 - 0.0065 * avg_altitude_m
+    actual_temperature_k = temperature_c + 273.15
+    validate_positive(actual_temperature_k, "temperature_k")
+    return air_density_at_altitude(avg_altitude_m) * (
+        standard_temperature_k / actual_temperature_k
+    )
+
+
 def compute_air_speed(v_road: float, v_headwind_m_s: float) -> float:
     """"
     compute relative air speed
@@ -133,6 +150,17 @@ def estimate_watts_per_kg(power_w: float, rider: Rider) -> float:
     return power_w / rider.mass_kg
 
 
+def drivetrain_adjusted_power(
+    resistive_power_w: float,
+    drivetrain_efficiency: float,
+) -> float:
+    validate_positive(resistive_power_w, "resistive_power_w")
+    if not 0.0 < drivetrain_efficiency <= 1.0:
+        raise ValueError("drivetrain_efficiency must be > 0 and <= 1.")
+
+    return resistive_power_w / drivetrain_efficiency
+
+
 def summarise_climb_performance(
     rider: Rider,
     bike: Bike,
@@ -140,6 +168,7 @@ def summarise_climb_performance(
     *,
     headwind_m_s: float = 0.0,
     air_density_kg_m3: float | None = None,
+    drivetrain_efficiency: float = 1.0,
 ) -> dict:
     gradient_percent = compute_gradient(climb.elevation_gain_m, climb.distance_m)
     vam_m_per_h = compute_vam(climb.elevation_gain_m, climb.time_s)
@@ -154,6 +183,10 @@ def summarise_climb_performance(
         air_density_kg_m3=air_density_kg_m3,
     )
     wkg = estimate_watts_per_kg(power["total_power_w"], rider)
+    crank_power_w = drivetrain_adjusted_power(
+        power["total_power_w"],
+        drivetrain_efficiency,
+    )
 
     return {
         "gradient_percent": gradient_percent,
@@ -163,6 +196,10 @@ def summarise_climb_performance(
         "vertical_speed_m_per_s": v_vertical,
         **power,
         "watts_per_kg": wkg,
+        "crank_power_w": crank_power_w,
+        "crank_watts_per_kg": estimate_watts_per_kg(crank_power_w, rider),
+        "drivetrain_efficiency": drivetrain_efficiency,
+        "drivetrain_loss_w": crank_power_w - power["total_power_w"],
     }
 
 def summarise_full_performance(
@@ -172,6 +209,7 @@ def summarise_full_performance(
     *,
     headwind_m_s: float = 0.0,
     air_density_kg_m3: float | None = None,
+    drivetrain_efficiency: float = 1.0,
 ) -> dict:
     climb_summary = summarise_climb_performance(
         rider,
@@ -179,6 +217,7 @@ def summarise_full_performance(
         climb,
         headwind_m_s=headwind_m_s,
         air_density_kg_m3=air_density_kg_m3,
+        drivetrain_efficiency=drivetrain_efficiency,
     )
     aslp_summary = summarise_aslp(
         observed_power_w=climb_summary["total_power_w"],

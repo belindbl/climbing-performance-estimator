@@ -14,7 +14,8 @@
       --form-ink: #182235;
       --muted: #9aa7a0;
       --line: #2a3230;
-      --protected: #4f8f72;
+      --drafting: #4f8f72;
+      --leader: #6f9cc5;
       --low: #d1a23b;
       --solo: #b85d4d;
       --focus: #245fce;
@@ -186,7 +187,7 @@
 
     .stats {
       display: grid;
-      grid-template-columns: repeat(4, minmax(0, 1fr));
+      grid-template-columns: repeat(5, minmax(0, 1fr));
       gap: 10px;
       padding: 0 16px 16px;
     }
@@ -415,8 +416,9 @@
         <svg id="profile" viewBox="0 0 980 440" role="img" aria-label="Elevation profile with editable segment breakpoints"></svg>
       </div>
       <div class="stats">
-        <div class="stat"><span>W/kg</span><strong id="wkg">--</strong></div>
-        <div class="stat"><span>Total Power</span><strong id="power">--</strong></div>
+        <div class="stat"><span>Crank W/kg</span><strong id="wkg">--</strong></div>
+        <div class="stat"><span>Etalon 60 kg</span><strong id="etalonWkg">--</strong></div>
+        <div class="stat"><span>Crank Power</span><strong id="power">--</strong></div>
         <div class="stat"><span>Aero Power</span><strong id="aero">--</strong></div>
         <div class="stat"><span>Ground Speed</span><strong id="groundSpeed">--</strong></div>
       </div>
@@ -429,8 +431,9 @@
       <div class="inputs">
         <label>Rider weight (kg)<input id="riderMass" type="number" min="1" step="0.1" value="60"></label>
         <label>Bike weight (kg)<input id="bikeMass" type="number" min="1" step="0.1" value="8"></label>
-        <label>CdA (m2)<input id="cda" type="number" min="0" step="0.01" value="0.37"></label>
+        <label>CdA (m2)<input id="cda" type="number" min="0" step="0.01" value="0.32"></label>
         <label>Crr<input id="crr" type="number" min="0" step="0.0005" value="0.004"></label>
+        <label>Drivetrain eff.<input id="drivetrainEfficiency" type="number" min="0.8" max="1" step="0.005" value="0.975"></label>
         <label>Temp C<input id="temperature" type="number" step="0.1" value="15.4"></label>
         <label>Wind deg<input id="windDirection" type="number" min="0" max="360" step="1" value="21"></label>
       </div>
@@ -449,9 +452,16 @@
           <div class="readout"><span>Gravity</span><strong id="gravityPower">--</strong></div>
           <div class="readout"><span>Rolling</span><strong id="rollingPower">--</strong></div>
           <div class="readout"><span>Aero</span><strong id="advancedAeroPower">--</strong></div>
+          <div class="readout"><span>Resistive power</span><strong id="resistivePower">--</strong></div>
+          <div class="readout"><span>Drivetrain loss</span><strong id="drivetrainLoss">--</strong></div>
+          <div class="readout"><span>Etalon power</span><strong id="etalonPower">--</strong></div>
           <div class="readout"><span>Air density</span><strong id="airDensity">--</strong></div>
           <div class="readout"><span>Temp</span><strong id="tempReadout">--</strong></div>
           <div class="readout"><span>Wind direction</span><strong id="windDirectionReadout">--</strong></div>
+          <div class="readout"><span>Distance</span><strong id="auditDistance">--</strong></div>
+          <div class="readout"><span>Ascent</span><strong id="auditAscent">--</strong></div>
+          <div class="readout"><span>Duration</span><strong id="auditDuration">--</strong></div>
+          <div class="readout"><span>Gradient</span><strong id="auditGradient">--</strong></div>
         </div>
         <div class="segment-breakdown" id="segmentBreakdown"></div>
       </details>
@@ -460,9 +470,10 @@
 
   <script>
     const API_BASE_CANDIDATES = [
-      window.location.origin,
+      "http://127.0.0.1:8767",
+      "http://127.0.0.1:8766",
       "http://127.0.0.1:8765",
-      "http://127.0.0.1:8766"
+      window.location.origin
     ].filter((value, index, values) => value.startsWith("http") && values.indexOf(value) === index);
 
     const ROUTE_API = "/api/routes/la-redoute";
@@ -470,15 +481,16 @@
     const DEFAULT_WIND_EXPOSURE_FACTOR = 1.0;
 
     const protectionTypes = {
-      protected: { label: "Protected", aeroMultiplier: 0.65, color: "#4f8f72" },
-      low: { label: "Low protection", aeroMultiplier: 0.82, color: "#d1a23b" },
+      drafting: { label: "Drafting", aeroMultiplier: 0.65, color: "#4f8f72" },
+      leader: { label: "Leader + Wheel", aeroMultiplier: 0.97, color: "#6f9cc5" },
+      low: { label: "Low Draft", aeroMultiplier: 0.82, color: "#d1a23b" },
       solo: { label: "Solo", aeroMultiplier: 1.0, color: "#b85d4d" }
     };
 
     const state = {
       route: null,
       segments: [
-        { start: 0, end: 0, type: "protected" },
+        { start: 0, end: 0, type: "drafting" },
       ],
       draggingHandle: null,
       resultRequestId: 0,
@@ -498,9 +510,11 @@
       bikeMass: document.getElementById("bikeMass"),
       cda: document.getElementById("cda"),
       crr: document.getElementById("crr"),
+      drivetrainEfficiency: document.getElementById("drivetrainEfficiency"),
       temperature: document.getElementById("temperature"),
       windDirection: document.getElementById("windDirection"),
       wkg: document.getElementById("wkg"),
+      etalonWkg: document.getElementById("etalonWkg"),
       power: document.getElementById("power"),
       aero: document.getElementById("aero"),
       groundSpeed: document.getElementById("groundSpeed"),
@@ -511,9 +525,16 @@
       gravityPower: document.getElementById("gravityPower"),
       rollingPower: document.getElementById("rollingPower"),
       advancedAeroPower: document.getElementById("advancedAeroPower"),
+      resistivePower: document.getElementById("resistivePower"),
+      drivetrainLoss: document.getElementById("drivetrainLoss"),
+      etalonPower: document.getElementById("etalonPower"),
       airDensity: document.getElementById("airDensity"),
       tempReadout: document.getElementById("tempReadout"),
       windDirectionReadout: document.getElementById("windDirectionReadout"),
+      auditDistance: document.getElementById("auditDistance"),
+      auditAscent: document.getElementById("auditAscent"),
+      auditDuration: document.getElementById("auditDuration"),
+      auditGradient: document.getElementById("auditGradient"),
       segmentBreakdown: document.getElementById("segmentBreakdown")
     };
 
@@ -538,7 +559,8 @@
         els.riderMass,
         els.bikeMass,
         els.cda,
-        els.crr
+        els.crr,
+        els.drivetrainEfficiency
       ]
         .forEach(input => input.addEventListener("input", render));
 
@@ -777,8 +799,9 @@
       const summary = result.summary;
       syncWeatherInputs(summary);
       els.routeSummary.textContent = `${(state.route.distanceM / 1000).toFixed(2)} km, ${state.route.ascentM.toFixed(0)} m ascent, ${formatTime(state.route.durationS)}`;
-      els.wkg.textContent = summary.watts_per_kg.toFixed(2);
-      els.power.textContent = `${summary.total_power_w.toFixed(0)} W`;
+      els.wkg.textContent = summary.crank_watts_per_kg.toFixed(2);
+      els.etalonWkg.textContent = summary.etalon_watts_per_kg.toFixed(2);
+      els.power.textContent = `${summary.crank_power_w.toFixed(0)} W`;
       els.aero.textContent = `${summary.power_aero_w.toFixed(0)} W`;
       els.groundSpeed.textContent = `${summary.road_speed_km_per_h.toFixed(1)} km/h`;
       els.aslpPower.textContent = `${summary.sea_level_equivalent_power_w.toFixed(0)} W`;
@@ -788,9 +811,16 @@
       els.gravityPower.textContent = `${summary.power_gravity_w.toFixed(0)} W`;
       els.rollingPower.textContent = `${summary.power_rolling_w.toFixed(0)} W`;
       els.advancedAeroPower.textContent = `${summary.power_aero_w.toFixed(0)} W`;
+      els.resistivePower.textContent = `${summary.total_power_w.toFixed(0)} W`;
+      els.drivetrainLoss.textContent = `${summary.drivetrain_loss_w.toFixed(1)} W`;
+      els.etalonPower.textContent = `${summary.etalon_crank_power_w.toFixed(0)} W`;
       els.airDensity.textContent = `${summary.air_density_kg_m3.toFixed(3)} kg/m3`;
       els.tempReadout.textContent = `${readNumber(els.temperature).toFixed(1)} C`;
       els.windDirectionReadout.textContent = `${normalizeDegrees(readNumber(els.windDirection)).toFixed(0)} deg`;
+      els.auditDistance.textContent = meters(summary.route_distance_m);
+      els.auditAscent.textContent = `${summary.route_ascent_m.toFixed(0)} m`;
+      els.auditDuration.textContent = formatTime(summary.climb_time_s);
+      els.auditGradient.textContent = `${summary.gradient_percent.toFixed(2)} %`;
       renderSegmentBreakdown(result.segments);
     }
 
@@ -854,7 +884,7 @@
     function loadRoute(payload) {
       state.route = routeFromApi(payload);
       state.segments = [
-        { start: 0, end: state.route.distanceM, type: "protected" }
+        { start: 0, end: state.route.distanceM, type: "drafting" }
       ];
       updateRouteTitle();
       els.routeSummary.textContent = `${(state.route.distanceM / 1000).toFixed(2)} km, ${state.route.ascentM.toFixed(0)} m ascent, ${formatTime(state.route.durationS)}`;
@@ -892,6 +922,7 @@
         },
         include_weather: includeWeather,
         wind_exposure_factor: DEFAULT_WIND_EXPOSURE_FACTOR,
+        drivetrain_efficiency: readNumber(els.drivetrainEfficiency),
         gpx_text: state.gpxText,
         temperature_c: readNumber(els.temperature),
         wind_direction_deg: normalizeDegrees(readNumber(els.windDirection)),

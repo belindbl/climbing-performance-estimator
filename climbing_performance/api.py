@@ -19,9 +19,13 @@ from climbing_performance.workflow import (
 
 
 PROTECTION_TYPES = {
-    "protected": 0.65,
+    "drafting": 0.65,
+    "leader": 0.97,
     "low": 0.82,
     "solo": 1.0,
+}
+SEGMENT_TYPE_ALIASES = {
+    "protected": "drafting",
 }
 DEFAULT_RIDER_MASS_KG = 60.0
 DEFAULT_BIKE_MASS_KG = 8.0
@@ -29,6 +33,7 @@ DEFAULT_CDA_M2 = 0.37
 DEFAULT_ROLLING_RESISTANCE_COEFFICIENT = 0.004
 DEFAULT_INCLUDE_WEATHER = True
 DEFAULT_WIND_EXPOSURE_FACTOR = 1.0
+DEFAULT_DRIVETRAIN_EFFICIENCY = 0.975
 
 
 class RoutePayload(BaseModel):
@@ -42,6 +47,10 @@ class PerformanceRequest(BaseModel):
     segments: list[dict[str, Any]] = Field(default_factory=list)
     include_weather: bool = DEFAULT_INCLUDE_WEATHER
     wind_exposure_factor: float = DEFAULT_WIND_EXPOSURE_FACTOR
+    drivetrain_efficiency: float = DEFAULT_DRIVETRAIN_EFFICIENCY
+    temperature_c: float | None = None
+    wind_speed_m_s: float | None = None
+    wind_direction_deg: float | None = None
 
 
 def create_app(repo_root: Path | None = None) -> FastAPI:
@@ -191,6 +200,12 @@ def performance_payload(payload: dict[str, Any], gpx_path: Path) -> dict[str, An
         wind_exposure_factor=float(
             payload.get("wind_exposure_factor", DEFAULT_WIND_EXPOSURE_FACTOR)
         ),
+        drivetrain_efficiency=float(
+            payload.get("drivetrain_efficiency", DEFAULT_DRIVETRAIN_EFFICIENCY)
+        ),
+        weather_temperature_c=optional_float(payload.get("temperature_c")),
+        weather_wind_speed_m_s=optional_float(payload.get("wind_speed_m_s")),
+        weather_wind_direction_deg=optional_float(payload.get("wind_direction_deg")),
         segment_adjustments=adjustments,
     )
 
@@ -209,6 +224,13 @@ def performance_payload(payload: dict[str, Any], gpx_path: Path) -> dict[str, An
     }
 
 
+def optional_float(value: Any) -> float | None:
+    if value is None:
+        return None
+
+    return float(value)
+
+
 def segment_adjustments_from_payload(
     segments: list[dict[str, Any]],
     route_distance_m: float,
@@ -216,8 +238,8 @@ def segment_adjustments_from_payload(
     if not segments:
         segments = [
             {
-                "name": "protected",
-                "type": "protected",
+                "name": "drafting",
+                "type": "drafting",
                 "start_distance_m": 0.0,
                 "end_distance_m": route_distance_m,
             }
@@ -225,7 +247,7 @@ def segment_adjustments_from_payload(
 
     adjustments = []
     for index, segment in enumerate(segments):
-        segment_type = str(segment.get("type", "solo"))
+        segment_type = canonical_segment_type(str(segment.get("type", "solo")))
         if segment_type not in PROTECTION_TYPES:
             raise ValueError(f"Unknown segment type: {segment_type}")
 
@@ -334,7 +356,12 @@ def ascent_between(route: GPXRoute, start_distance_m: float, end_distance_m: flo
 
 def label_for_protection_type(protection_type: str) -> str:
     return {
-        "protected": "Protected",
-        "low": "Low protection",
+        "drafting": "Drafting",
+        "leader": "Leader with rider behind",
+        "low": "Low draft",
         "solo": "Solo",
     }[protection_type]
+
+
+def canonical_segment_type(segment_type: str) -> str:
+    return SEGMENT_TYPE_ALIASES.get(segment_type, segment_type)

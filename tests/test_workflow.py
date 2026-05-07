@@ -92,6 +92,34 @@ def test_summarise_gpx_performance_can_apply_explicit_wind_exposure():
     assert summary["wind_exposure_factor"] == pytest.approx(1.0)
 
 
+def test_summarise_gpx_performance_can_override_weather_direction():
+    rider = Rider(mass_kg=70.0)
+    bike = Bike.default()
+
+    baseline = summarise_gpx_performance(
+        LA_REDOUTE_GPX,
+        rider,
+        bike,
+        weather_fetcher=fake_weather_fetcher,
+    )
+    overridden = summarise_gpx_performance(
+        LA_REDOUTE_GPX,
+        rider,
+        bike,
+        weather_wind_direction_deg=(
+            baseline["weather_wind_direction_deg"] + 180.0
+        ) % 360.0,
+        weather_fetcher=fake_weather_fetcher,
+    )
+
+    assert overridden["weather_wind_direction_deg"] == pytest.approx(
+        (baseline["weather_wind_direction_deg"] + 180.0) % 360.0
+    )
+    assert overridden["headwind_m_s"] != pytest.approx(baseline["headwind_m_s"])
+    assert overridden["power_aero_w"] != pytest.approx(baseline["power_aero_w"])
+    assert overridden["total_power_w"] != pytest.approx(baseline["total_power_w"])
+
+
 def test_summarise_gpx_performance_can_run_without_weather():
     rider = Rider.default()
     bike = Bike.default()
