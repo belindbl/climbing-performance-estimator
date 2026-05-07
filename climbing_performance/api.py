@@ -4,11 +4,11 @@ from pathlib import Path
 from typing import Any
 import tempfile
 
-from fastapi import FastAPI, HTTPException
-from fastapi.encoders import jsonable_encoder
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field
+from fastapi import FastAPI, HTTPException # type: ignore
+from fastapi.encoders import jsonable_encoder # type: ignore
+from fastapi.middleware.cors import CORSMiddleware # type: ignore
+from fastapi.staticfiles import StaticFiles # type: ignore
+from pydantic import BaseModel, Field # type: ignore
 from climbing_performance.gpx import GPXRoute, parse_gpx
 from climbing_performance.models import Bike, Rider
 from climbing_performance.weather import WeatherAPIError
