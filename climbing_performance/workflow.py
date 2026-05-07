@@ -11,6 +11,7 @@ from climbing_performance.metrics import (
     compute_air_speed,
     compute_gradient,
     compute_road_speed,
+    compute_road_speed_km_per_h,
     compute_vam,
     compute_vertical_speed,
     estimate_watts_per_kg,
@@ -19,10 +20,10 @@ from climbing_performance.metrics import (
 from climbing_performance.models import Bike, Climb, Rider
 from climbing_performance.weather import (
     WeatherSample,
-    fetch_hourly_weather,
     nearest_weather_sample,
     wind_to_components,
 )
+from climbing_performance.weather_cache import cached_fetch_hourly_weather
 
 
 WeatherFetcher = Callable[[float, float, str, str], list[WeatherSample]]
@@ -131,7 +132,7 @@ def summarise_gpx_performance(
     *,
     weather_source: str = "auto",
     include_weather: bool = True,
-    wind_exposure_factor: float = 0.0,
+    wind_exposure_factor: float = 1.0,
     segment_adjustments: list[RouteSegmentAdjustment] | None = None,
     weather_fetcher: WeatherFetcher | None = None,
 ) -> dict:
@@ -212,7 +213,7 @@ def summarise_segmented_route_performance(
     *,
     segment_adjustments: list[RouteSegmentAdjustment],
     weather_context: RouteWeatherContext | None = None,
-    wind_exposure_factor: float = 0.0,
+    wind_exposure_factor: float = 1.0,
 ) -> dict:
     climb = route_to_performance_climb(route)
     total_mass = rider.mass_kg + bike.mass_kg
@@ -307,6 +308,10 @@ def summarise_segmented_route_performance(
         ),
         "vam_m_per_h": compute_vam(climb.elevation_gain_m, climb.time_s),
         "road_speed_m_per_s": compute_road_speed(climb.distance_m, climb.time_s),
+        "road_speed_km_per_h": compute_road_speed_km_per_h(
+            climb.distance_m,
+            climb.time_s,
+        ),
         "vertical_speed_m_per_s": compute_vertical_speed(
             climb.elevation_gain_m,
             climb.time_s,
@@ -429,7 +434,7 @@ def _segment_adjustment_slices(
 
 def _default_weather_fetcher(source: str) -> WeatherFetcher:
     def fetch(latitude: float, longitude: float, start_date: str, end_date: str):
-        return fetch_hourly_weather(
+        return cached_fetch_hourly_weather(
             latitude=latitude,
             longitude=longitude,
             start_date=start_date,

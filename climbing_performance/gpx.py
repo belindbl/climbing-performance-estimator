@@ -15,6 +15,7 @@ class TrackPoint:
     elevation_m: float | None = None
     time: datetime | None = None
     segment_index: int = 0
+    distance_m: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -60,6 +61,7 @@ class WeatherQueryWindow:
 class GPXRoute:
     points: list[TrackPoint]
     segments: list[RouteSegment]
+    name: str | None = None
 
     @property
     def start_time(self) -> datetime | None:
@@ -166,14 +168,14 @@ def parse_gpx(path: str | Path) -> GPXRoute:
     path = Path(path)
     root = ET.parse(path).getroot()
 
-    points = _extract_track_points(root)
+    points = _with_cumulative_distances(_extract_track_points(root))
 
     if len(points) < 2:
         raise ValueError("GPX file must contain at least two track points.")
 
     segments = build_route_segments(points)
 
-    return GPXRoute(points=points, segments=segments)
+    return GPXRoute(points=points, segments=segments, name=_extract_route_name(root))
 
 
 def build_route_segments(points: list[TrackPoint]) -> list[RouteSegment]:
@@ -332,17 +334,10 @@ def assign_estimated_times(
     if total_distance <= 0:
         raise ValueError("Route distance must be positive.")
 
-    cumulative_by_point_id: dict[int, float] = {id(route.points[0]): 0.0}
-
-    cumulative = 0.0
-    for segment in route.segments:
-        cumulative += segment.distance_m
-        cumulative_by_point_id[id(segment.end)] = cumulative
-
     new_points: list[TrackPoint] = []
 
     for point in route.points:
-        point_distance = cumulative_by_point_id.get(id(point), 0.0)
+        point_distance = point.distance_m
         fraction = point_distance / total_distance
         estimated_time = start_time + duration * fraction
 
@@ -353,12 +348,14 @@ def assign_estimated_times(
                 elevation_m=point.elevation_m,
                 time=estimated_time,
                 segment_index=point.segment_index,
+                distance_m=point.distance_m,
             )
         )
 
     return GPXRoute(
         points=new_points,
         segments=build_route_segments(new_points),
+        name=route.name,
     )
 
 
@@ -431,6 +428,60 @@ def _extract_track_points(root: ET.Element) -> list[TrackPoint]:
             points.append(_parse_point(rtept, segment_index))
 
     return points
+
+
+def _extract_route_name(root: ET.Element) -> str | None:
+    for container_name in ("trk", "rte", "metadata"):
+        for container in root:
+            if _local_name(container.tag) != container_name:
+                continue
+
+            for child in container:
+                if _local_name(child.tag) == "name" and child.text:
+                    name = child.text.strip()
+                    if name:
+                        return name
+
+    return None
+
+
+def _with_cumulative_distances(points: list[TrackPoint]) -> list[TrackPoint]:
+    if not points:
+        return []
+
+    distance_m = 0.0
+    points_with_distance = [
+        TrackPoint(
+            latitude=points[0].latitude,
+            longitude=points[0].longitude,
+            elevation_m=points[0].elevation_m,
+            time=points[0].time,
+            segment_index=points[0].segment_index,
+            distance_m=distance_m,
+        )
+    ]
+
+    for start, end in zip(points, points[1:]):
+        if start.segment_index == end.segment_index:
+            distance_m += haversine_distance_m(
+                start.latitude,
+                start.longitude,
+                end.latitude,
+                end.longitude,
+            )
+
+        points_with_distance.append(
+            TrackPoint(
+                latitude=end.latitude,
+                longitude=end.longitude,
+                elevation_m=end.elevation_m,
+                time=end.time,
+                segment_index=end.segment_index,
+                distance_m=distance_m,
+            )
+        )
+
+    return points_with_distance
 
 
 def _parse_point(elem: ET.Element, segment_index: int) -> TrackPoint:

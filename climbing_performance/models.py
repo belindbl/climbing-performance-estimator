@@ -3,7 +3,7 @@ from dataclasses import dataclass
 
 @dataclass
 class Rider:
-    mass_kg: float = 70.0
+    mass_kg: float = 60.0
 
     @staticmethod
     def default():
@@ -13,8 +13,8 @@ class Rider:
 @dataclass
 class Bike:
     mass_kg: float = 8.0
-    drag_coefficient: float = 0.88
-    frontal_area_m2: float = 0.5
+    drag_coefficient: float = 1.0
+    frontal_area_m2: float = 0.37
     rolling_resistance_coefficient: float = 0.004
 
     @staticmethod

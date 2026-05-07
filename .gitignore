@@ -24,6 +24,9 @@ dist/
 *.egg-info/
 .eggs/
 
+# Local caches
+data/cache/
+
 # Jupyter
 .ipynb_checkpoints/
 

@@ -30,6 +30,10 @@ def compute_road_speed(distance_m: float, time_s: float) -> float:
     return distance_m / time_s  # m/s
 
 
+def compute_road_speed_km_per_h(distance_m: float, time_s: float) -> float:
+    return compute_road_speed(distance_m, time_s) * 3.6
+
+
 def compute_vertical_speed(elevation_gain_m: float, time_s: float) -> float:
     validate_positive(time_s, "time_s")
     validate_non_negative(elevation_gain_m, "elevation_gain_m")
@@ -155,6 +159,7 @@ def summarise_climb_performance(
         "gradient_percent": gradient_percent,
         "vam_m_per_h": vam_m_per_h,
         "road_speed_m_per_s": v_road,
+        "road_speed_km_per_h": v_road * 3.6,
         "vertical_speed_m_per_s": v_vertical,
         **power,
         "watts_per_kg": wkg,

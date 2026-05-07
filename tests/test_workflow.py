@@ -13,7 +13,7 @@ from climbing_performance.workflow import (
 from climbing_performance.gpx import parse_gpx
 
 
-LA_REDOUTE_GPX = Path(__file__).parents[1] / "notebooks" / "la_redoute.gpx"
+LA_REDOUTE_GPX = Path(__file__).parents[1] / "data" / "la_redoute.gpx"
 
 
 def fake_weather_fetcher(
@@ -68,9 +68,9 @@ def test_summarise_gpx_performance_integrates_weather_and_route():
     )
     assert summary["weather_temperature_c"] == pytest.approx(15.4)
     assert "headwind_m_s" in summary
-    assert summary["headwind_m_s"] == pytest.approx(0.0)
     assert "raw_headwind_m_s" in summary
-    assert summary["wind_exposure_factor"] == pytest.approx(0.0)
+    assert summary["headwind_m_s"] == pytest.approx(summary["raw_headwind_m_s"])
+    assert summary["wind_exposure_factor"] == pytest.approx(1.0)
     assert "crosswind_m_s" in summary
     assert summary["total_power_w"] > 0.0
     assert summary["sea_level_equivalent_power_w"] >= summary["total_power_w"]

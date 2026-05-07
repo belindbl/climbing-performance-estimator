@@ -6,11 +6,14 @@
   <title>Climbing Segment Model</title>
   <style>
     :root {
-      --bg: #f6f7f4;
-      --panel: #ffffff;
-      --ink: #18201d;
-      --muted: #66716a;
-      --line: #d9ded8;
+      --bg: #0f1214;
+      --panel: #171b1f;
+      --chart-bg-top: #151a20;
+      --chart-bg-bottom: #101417;
+      --ink: #e7ece9;
+      --form-ink: #182235;
+      --muted: #9aa7a0;
+      --line: #2a3230;
       --protected: #4f8f72;
       --low: #d1a23b;
       --solo: #b85d4d;
@@ -58,7 +61,7 @@
 
     .toolbar {
       display: grid;
-      grid-template-columns: 1fr auto;
+      grid-template-columns: 1fr auto auto;
       gap: 12px;
       align-items: center;
     }
@@ -94,10 +97,11 @@
       border: 1px solid var(--line);
       border-radius: 6px;
       background: #fff;
-      color: var(--ink);
+      color: var(--form-ink);
       cursor: pointer;
       padding: 0 11px;
       white-space: nowrap;
+      font-size: 15px;
     }
 
     button:hover {
@@ -107,7 +111,25 @@
     button.primary {
       background: var(--ink);
       border-color: var(--ink);
-      color: #fff;
+      color: #0c0808;
+    }
+
+    .file-control {
+      height: 34px;
+      display: inline-grid;
+      align-items: center;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fff;
+      color: var(--form-ink);
+      cursor: pointer;
+      padding: 0 11px;
+      white-space: nowrap;
+      font-size: 15px;
+    }
+
+    .file-control input {
+      display: none;
     }
 
     .chart-wrap {
@@ -120,7 +142,7 @@
       display: block;
       border: 1px solid var(--line);
       border-radius: 8px;
-      background: linear-gradient(#fbfcfa, #f2f4f0);
+      background: linear-gradient(180deg, var(--chart-bg-top) 0%, var(--chart-bg-bottom) 100%);
       user-select: none;
       touch-action: none;
     }
@@ -147,18 +169,18 @@
     }
 
     .axis {
-      stroke: #8d978f;
+      stroke: #6f7f99;
       stroke-width: 1;
     }
 
     .grid {
-      stroke: #e4e8e2;
+      stroke: #25344f;
       stroke-width: 1;
     }
 
     .profile {
       fill: rgba(40, 70, 58, 0.13);
-      stroke: #28463a;
+      stroke: #c3ccd8;
       stroke-width: 2;
     }
 
@@ -197,7 +219,7 @@
 
     .segment-row {
       display: grid;
-      grid-template-columns: 10px 1fr 112px 34px;
+      grid-template-columns: 10px minmax(0, 1fr);
       gap: 8px;
       align-items: center;
       border: 1px solid var(--line);
@@ -218,6 +240,21 @@
       padding: 0 8px;
       background: #fff;
       min-width: 0;
+      width: 100%;
+      color: var(--form-ink);
+    }
+
+    .segment-actions {
+      grid-column: 2;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 48px;
+      gap: 8px;
+    }
+
+    .segment-actions button {
+      width: 48px;
+      padding: 0;
+      font-size: 12px;
     }
 
     .segment-meta {
@@ -255,9 +292,21 @@
       border: 1px solid var(--line);
       border-radius: 6px;
       padding: 0 8px;
-      color: var(--ink);
+      color: var(--form-ink);
       background: #fff;
       min-width: 0;
+    }
+
+    input::placeholder {
+      color: var(--muted);
+      opacity: 1;
+    }
+
+    input:-webkit-autofill,
+    input:-webkit-autofill:hover,
+    input:-webkit-autofill:focus {
+      -webkit-text-fill-color: var(--form-ink);
+      box-shadow: 0 0 0 1000px #fff inset;
     }
 
     .error {
@@ -352,9 +401,13 @@
     <section class="workspace">
       <div class="toolbar">
         <div>
-          <h1>La Redoute Segment Model</h1>
+          <h1 id="routeTitle">Climbing Segment Model</h1>
           <div class="subtle" id="routeSummary">Loading GPX route</div>
         </div>
+        <label class="file-control">
+          GPX File
+          <input id="gpxFile" type="file" accept=".gpx,application/gpx+xml,application/xml,text/xml">
+        </label>
         <button class="primary" id="addBreakpoint">Add Breakpoint</button>
       </div>
       <div class="error" id="errorBox"></div>
@@ -365,7 +418,7 @@
         <div class="stat"><span>W/kg</span><strong id="wkg">--</strong></div>
         <div class="stat"><span>Total Power</span><strong id="power">--</strong></div>
         <div class="stat"><span>Aero Power</span><strong id="aero">--</strong></div>
-        <div class="stat"><span>Gradient</span><strong id="gradient">--</strong></div>
+        <div class="stat"><span>Ground Speed</span><strong id="groundSpeed">--</strong></div>
       </div>
     </section>
 
@@ -374,10 +427,9 @@
         <h2>Assumptions</h2>
       </div>
       <div class="inputs">
-        <label>Rider weight (kg)<input id="riderMass" type="number" min="1" step="0.1" value="66"></label>
+        <label>Rider weight (kg)<input id="riderMass" type="number" min="1" step="0.1" value="60"></label>
         <label>Bike weight (kg)<input id="bikeMass" type="number" min="1" step="0.1" value="8"></label>
-        <label>Cd<input id="cd" type="number" min="0" step="0.01" value="0.88"></label>
-        <label>Frontal area (m2)<input id="frontalArea" type="number" min="0" step="0.01" value="0.50"></label>
+        <label>CdA (m2)<input id="cda" type="number" min="0" step="0.01" value="0.37"></label>
         <label>Crr<input id="crr" type="number" min="0" step="0.0005" value="0.004"></label>
         <label>Temp C<input id="temperature" type="number" step="0.1" value="15.4"></label>
         <label>Wind deg<input id="windDirection" type="number" min="0" max="360" step="1" value="21"></label>
@@ -407,10 +459,15 @@
   </main>
 
   <script>
-    const GPX_PATH = "../notebooks/la_redoute.gpx";
-    const G = 9.81;
-    const RHO0 = 1.225;
-    const SCALE_HEIGHT_M = 8500;
+    const API_BASE_CANDIDATES = [
+      window.location.origin,
+      "http://127.0.0.1:8765",
+      "http://127.0.0.1:8766"
+    ].filter((value, index, values) => value.startsWith("http") && values.indexOf(value) === index);
+
+    const ROUTE_API = "/api/routes/la-redoute";
+    const PERFORMANCE_API = "/api/performance";
+    const DEFAULT_WIND_EXPOSURE_FACTOR = 1.0;
 
     const protectionTypes = {
       protected: { label: "Protected", aeroMultiplier: 0.65, color: "#4f8f72" },
@@ -422,28 +479,31 @@
       route: null,
       segments: [
         { start: 0, end: 0, type: "protected" },
-        { start: 0, end: 0, type: "solo" }
       ],
-      draggingHandle: null
+      draggingHandle: null,
+      resultRequestId: 0,
+      gpxText: null,
+      weatherManuallyEdited: false
     };
 
     const els = {
       svg: document.getElementById("profile"),
+      routeTitle: document.getElementById("routeTitle"),
       routeSummary: document.getElementById("routeSummary"),
       errorBox: document.getElementById("errorBox"),
       segmentList: document.getElementById("segmentList"),
       addBreakpoint: document.getElementById("addBreakpoint"),
+      gpxFile: document.getElementById("gpxFile"),
       riderMass: document.getElementById("riderMass"),
       bikeMass: document.getElementById("bikeMass"),
-      cd: document.getElementById("cd"),
-      frontalArea: document.getElementById("frontalArea"),
+      cda: document.getElementById("cda"),
       crr: document.getElementById("crr"),
       temperature: document.getElementById("temperature"),
       windDirection: document.getElementById("windDirection"),
       wkg: document.getElementById("wkg"),
       power: document.getElementById("power"),
       aero: document.getElementById("aero"),
-      gradient: document.getElementById("gradient"),
+      groundSpeed: document.getElementById("groundSpeed"),
       aslpPower: document.getElementById("aslpPower"),
       aslpWkg: document.getElementById("aslpWkg"),
       vam: document.getElementById("vam"),
@@ -461,17 +521,11 @@
 
     async function init() {
       try {
-        const text = await fetch(GPX_PATH).then(response => {
-          if (!response.ok) throw new Error(`Could not load ${GPX_PATH}`);
-          return response.text();
+        const payload = await apiFetch(ROUTE_API).then(response => {
+          if (!response.ok) throw new Error(`Could not load ${ROUTE_API}`);
+          return response.json();
         });
-        state.route = parseGpx(text);
-        const soloRemaining = 865;
-        const split = Math.max(0, state.route.distanceM - soloRemaining);
-        state.segments = [
-          { start: 0, end: split, type: "protected" },
-          { start: split, end: state.route.distanceM, type: "solo" }
-        ];
+        loadRoute(payload);
         wireEvents();
         render();
       } catch (error) {
@@ -483,13 +537,16 @@
       [
         els.riderMass,
         els.bikeMass,
-        els.cd,
-        els.frontalArea,
-        els.crr,
-        els.temperature,
-        els.windDirection
+        els.cda,
+        els.crr
       ]
         .forEach(input => input.addEventListener("input", render));
+
+      [els.temperature, els.windDirection]
+        .forEach(input => input.addEventListener("input", () => {
+          state.weatherManuallyEdited = true;
+          render();
+        }));
 
       els.addBreakpoint.addEventListener("click", () => {
         if (!state.route) return;
@@ -507,6 +564,22 @@
         render();
       });
 
+      els.gpxFile.addEventListener("change", async () => {
+        const file = els.gpxFile.files[0];
+        if (!file) return;
+
+        try {
+          state.gpxText = await file.text();
+          state.weatherManuallyEdited = false;
+          const result = await requestPerformanceWithWeatherFallback({ segments: [] });
+          loadRoute(result);
+          syncWeatherInputs(result.summary);
+          render();
+        } catch (error) {
+          showError(error.message);
+        }
+      });
+
       window.addEventListener("pointermove", event => {
         if (state.draggingHandle === null || !state.route) return;
         const distance = xToDistance(event.clientX);
@@ -517,69 +590,6 @@
       window.addEventListener("pointerup", () => {
         state.draggingHandle = null;
       });
-    }
-
-    function parseGpx(text) {
-      const xml = new DOMParser().parseFromString(text, "application/xml");
-      const trkpts = [...xml.getElementsByTagNameNS("*", "trkpt")];
-      if (trkpts.length < 2) throw new Error("GPX needs at least two track points");
-
-      const points = trkpts.map(point => {
-        const eleNode = point.getElementsByTagNameNS("*", "ele")[0];
-        const timeNode = point.getElementsByTagNameNS("*", "time")[0];
-        return {
-          lat: Number(point.getAttribute("lat")),
-          lon: Number(point.getAttribute("lon")),
-          ele: eleNode ? Number(eleNode.textContent) : null,
-          time: timeNode ? new Date(timeNode.textContent) : null,
-          distance: 0
-        };
-      });
-
-      const segments = [];
-      let cumulative = 0;
-      let ascent = 0;
-      let descent = 0;
-
-      for (let i = 0; i < points.length - 1; i += 1) {
-        const start = points[i];
-        const end = points[i + 1];
-        const distanceM = haversine(start.lat, start.lon, end.lat, end.lon);
-        if (distanceM <= 0) continue;
-        const elevationDeltaM = end.ele !== null && start.ele !== null ? end.ele - start.ele : 0;
-        const elapsedS = start.time && end.time ? (end.time - start.time) / 1000 : null;
-        end.distance = cumulative + distanceM;
-        cumulative += distanceM;
-        ascent += Math.max(0, elevationDeltaM);
-        descent += Math.abs(Math.min(0, elevationDeltaM));
-        segments.push({
-          startDistanceM: cumulative - distanceM,
-          endDistanceM: cumulative,
-          distanceM,
-          elevationDeltaM,
-          elapsedS,
-          bearingDeg: bearing(start.lat, start.lon, end.lat, end.lon),
-          start,
-          end
-        });
-      }
-
-      const elevations = points.map(point => point.ele).filter(value => value !== null);
-      const startTime = points.find(point => point.time)?.time;
-      const endTime = [...points].reverse().find(point => point.time)?.time;
-      const durationS = startTime && endTime ? (endTime - startTime) / 1000 : null;
-
-      return {
-        points,
-        segments,
-        distanceM: cumulative,
-        ascentM: ascent,
-        descentM: descent,
-        durationS,
-        avgAltitudeM: average(elevations),
-        minElevationM: Math.min(...elevations),
-        maxElevationM: Math.max(...elevations)
-      };
     }
 
     function render() {
@@ -730,7 +740,10 @@
           segment.type = select.value;
           render();
         });
-        row.appendChild(select);
+
+        const actions = document.createElement("div");
+        actions.className = "segment-actions";
+        actions.appendChild(select);
 
         const remove = document.createElement("button");
         remove.textContent = "Del";
@@ -739,142 +752,191 @@
           removeSegment(index);
           render();
         });
-        row.appendChild(remove);
+        actions.appendChild(remove);
+        row.appendChild(actions);
 
         els.segmentList.appendChild(row);
       });
     }
 
-    function renderResults() {
-      const result = calculatePower();
-      els.routeSummary.textContent = `${(state.route.distanceM / 1000).toFixed(2)} km, ${state.route.ascentM.toFixed(0)} m ascent, ${formatTime(state.route.durationS)}`;
-      els.wkg.textContent = result.wkg.toFixed(2);
-      els.power.textContent = `${result.totalPowerW.toFixed(0)} W`;
-      els.aero.textContent = `${result.aeroPowerW.toFixed(0)} W`;
-      els.gradient.textContent = `${result.gradientPercent.toFixed(1)} %`;
-      els.aslpPower.textContent = `${result.aslpPowerW.toFixed(0)} W`;
-      els.aslpWkg.textContent = result.aslpWkg.toFixed(2);
-      els.vam.textContent = `${result.vam.toFixed(0)} m/h`;
-      els.altitudeLoss.textContent = `${result.altitudeLossPercent.toFixed(1)} %`;
-      els.gravityPower.textContent = `${result.gravityPowerW.toFixed(0)} W`;
-      els.rollingPower.textContent = `${result.rollingPowerW.toFixed(0)} W`;
-      els.advancedAeroPower.textContent = `${result.aeroPowerW.toFixed(0)} W`;
-      els.airDensity.textContent = `${result.airDensityKgM3.toFixed(3)} kg/m3`;
-      els.tempReadout.textContent = `${result.temperatureC.toFixed(1)} C`;
-      els.windDirectionReadout.textContent = `${result.windDirectionDeg.toFixed(0)} deg`;
-      renderSegmentBreakdown(result.segmentStats);
-    }
-
-    function calculatePower() {
-      const route = state.route;
-      const riderMass = readNumber(els.riderMass);
-      const bikeMass = readNumber(els.bikeMass);
-      const totalMass = riderMass + bikeMass;
-      const cd = readNumber(els.cd);
-      const frontalArea = readNumber(els.frontalArea);
-      const cda = cd * frontalArea;
-      const baseCrr = readNumber(els.crr);
-      const temperatureC = readNumber(els.temperature);
-      const windDirectionDeg = normalizeDegrees(readNumber(els.windDirection));
-      const rho = RHO0 * Math.exp(-Math.max(0, route.avgAltitudeM) / SCALE_HEIGHT_M);
-
-      let gravityWork = 0;
-      let rollingWork = 0;
-      let aeroWork = 0;
-      const segmentStats = state.segments.map((segment, index) => ({
-        index,
-        type: segment.type,
-        distanceM: segment.end - segment.start,
-        ascentM: 0,
-        timeS: 0,
-        gravityWorkJ: 0,
-        rollingWorkJ: 0,
-        aeroWorkJ: 0
-      }));
-
-      for (const segment of route.segments) {
-        if (!segment.elapsedS || segment.elapsedS <= 0) continue;
-        const roadSpeed = segment.distanceM / segment.elapsedS;
-        const airSpeed = Math.max(0, roadSpeed);
-        const slices = segmentSlices(segment);
-        for (const slice of slices) {
-          const fraction = slice.distanceM / segment.distanceM;
-          const typeInfo = protectionTypes[slice.type];
-          const timeS = segment.elapsedS * fraction;
-          const ascentM = Math.max(0, segment.elevationDeltaM) * fraction;
-          const gravitySlice = totalMass * G * ascentM;
-          const rollingSlice = baseCrr * totalMass * G * slice.distanceM;
-          const aeroSlice = 0.5 * rho * cda * typeInfo.aeroMultiplier * Math.pow(airSpeed, 3) * timeS;
-
-          gravityWork += gravitySlice;
-          rollingWork += rollingSlice;
-          aeroWork += aeroSlice;
-
-          const stat = segmentStats[slice.overlayIndex];
-          stat.ascentM += ascentM;
-          stat.timeS += timeS;
-          stat.gravityWorkJ += gravitySlice;
-          stat.rollingWorkJ += rollingSlice;
-          stat.aeroWorkJ += aeroSlice;
-        }
+    async function renderResults() {
+      const requestId = ++state.resultRequestId;
+      let result;
+      try {
+        result = await requestPerformanceWithWeatherFallback();
+      } catch (error) {
+        showError(error.message);
+        return;
+      }
+      if (requestId !== state.resultRequestId) return;
+      if (!els.errorBox.textContent.includes("fallback")) {
+        els.errorBox.textContent = "";
+        els.errorBox.style.display = "none";
       }
 
-      const totalPowerW = (gravityWork + rollingWork + aeroWork) / route.durationS;
-      const cpFraction = cpRemainingFractionAtAltitude(route.avgAltitudeM);
-      const aslpPowerW = totalPowerW / cpFraction;
+      const summary = result.summary;
+      syncWeatherInputs(summary);
+      els.routeSummary.textContent = `${(state.route.distanceM / 1000).toFixed(2)} km, ${state.route.ascentM.toFixed(0)} m ascent, ${formatTime(state.route.durationS)}`;
+      els.wkg.textContent = summary.watts_per_kg.toFixed(2);
+      els.power.textContent = `${summary.total_power_w.toFixed(0)} W`;
+      els.aero.textContent = `${summary.power_aero_w.toFixed(0)} W`;
+      els.groundSpeed.textContent = `${summary.road_speed_km_per_h.toFixed(1)} km/h`;
+      els.aslpPower.textContent = `${summary.sea_level_equivalent_power_w.toFixed(0)} W`;
+      els.aslpWkg.textContent = summary.aslp_w_per_kg.toFixed(2);
+      els.vam.textContent = `${summary.vam_m_per_h.toFixed(0)} m/h`;
+      els.altitudeLoss.textContent = `${summary.altitude_power_loss_percent.toFixed(1)} %`;
+      els.gravityPower.textContent = `${summary.power_gravity_w.toFixed(0)} W`;
+      els.rollingPower.textContent = `${summary.power_rolling_w.toFixed(0)} W`;
+      els.advancedAeroPower.textContent = `${summary.power_aero_w.toFixed(0)} W`;
+      els.airDensity.textContent = `${summary.air_density_kg_m3.toFixed(3)} kg/m3`;
+      els.tempReadout.textContent = `${readNumber(els.temperature).toFixed(1)} C`;
+      els.windDirectionReadout.textContent = `${normalizeDegrees(readNumber(els.windDirection)).toFixed(0)} deg`;
+      renderSegmentBreakdown(result.segments);
+    }
+
+    async function requestPerformanceWithWeatherFallback(overrides = {}) {
+      try {
+        return await requestPerformance(true, overrides);
+      } catch (error) {
+        if (error.status !== 502) throw error;
+
+        const result = await requestPerformance(false, overrides);
+        showError(`${error.message} Using still-air fallback.`);
+        return result;
+      }
+    }
+
+    function syncWeatherInputs(summary) {
+      if (!summary) return;
+      if (state.weatherManuallyEdited) return;
+
+      const temperature = Number(summary.weather_temperature_c);
+      const windDirection = Number(summary.weather_wind_direction_deg);
+
+      if (Number.isFinite(temperature)) {
+        els.temperature.value = temperature.toFixed(1);
+      }
+      if (Number.isFinite(windDirection)) {
+        els.windDirection.value = normalizeDegrees(windDirection).toFixed(0);
+      }
+    }
+
+    function routePayloadFromApi(payload) {
+      const routePayload = payload && payload.route ? payload.route : payload;
+      if (!routePayload || !Array.isArray(routePayload.points)) {
+        throw new Error("API response did not include route points. Restart the server and hard-refresh the browser.");
+      }
+      return routePayload;
+    }
+
+    function routeFromApi(payload) {
+      const routePayload = routePayloadFromApi(payload);
       return {
-        totalPowerW,
-        gravityPowerW: gravityWork / route.durationS,
-        rollingPowerW: rollingWork / route.durationS,
-        aeroPowerW: aeroWork / route.durationS,
-        wkg: totalPowerW / riderMass,
-        gradientPercent: route.ascentM / route.distanceM * 100,
-        vam: route.ascentM / (route.durationS / 3600),
-        aslpPowerW,
-        aslpWkg: aslpPowerW / riderMass,
-        altitudeLossPercent: (1 - cpFraction) * 100,
-        airDensityKgM3: rho,
-        temperatureC,
-        windDirectionDeg,
-        segmentStats: segmentStats.map(stat => ({
-          ...stat,
-          vam: stat.timeS > 0 ? stat.ascentM / (stat.timeS / 3600) : 0,
-          gradientPercent: stat.distanceM > 0 ? stat.ascentM / stat.distanceM * 100 : 0,
-          totalPowerW: stat.timeS > 0
-            ? (stat.gravityWorkJ + stat.rollingWorkJ + stat.aeroWorkJ) / stat.timeS
-            : 0,
-          aeroPowerW: stat.timeS > 0 ? stat.aeroWorkJ / stat.timeS : 0
-        }))
+        name: routePayload.name || "GPX Route",
+        points: routePayload.points.map(point => ({
+          distance: point.distance_m,
+          ele: point.elevation_m,
+          lat: point.latitude,
+          lon: point.longitude,
+          time: point.time ? new Date(point.time) : null
+        })),
+        segments: [],
+        distanceM: routePayload.distance_m,
+        ascentM: routePayload.ascent_m,
+        descentM: routePayload.descent_m,
+        durationS: routePayload.duration_s,
+        avgAltitudeM: routePayload.avg_altitude_m,
+        minElevationM: routePayload.min_elevation_m,
+        maxElevationM: routePayload.max_elevation_m
       };
     }
 
-    function segmentSlices(routeSegment) {
-      const slices = [];
-      state.segments.forEach((overlay, overlayIndex) => {
-        const start = Math.max(routeSegment.startDistanceM, overlay.start);
-        const end = Math.min(routeSegment.endDistanceM, overlay.end);
-        if (end > start) {
-          slices.push({ distanceM: end - start, type: overlay.type, overlayIndex });
+    function loadRoute(payload) {
+      state.route = routeFromApi(payload);
+      state.segments = [
+        { start: 0, end: state.route.distanceM, type: "protected" }
+      ];
+      updateRouteTitle();
+      els.routeSummary.textContent = `${(state.route.distanceM / 1000).toFixed(2)} km, ${state.route.ascentM.toFixed(0)} m ascent, ${formatTime(state.route.durationS)}`;
+    }
+
+    function updateRouteTitle() {
+      const title = `${state.route.name} Segment Model`;
+      els.routeTitle.textContent = title;
+      document.title = title;
+    }
+
+    async function requestPerformance(includeWeather, overrides = {}) {
+      return apiFetch(PERFORMANCE_API, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(performanceRequest(includeWeather, overrides))
+      }).then(async response => {
+        const payload = await response.json();
+        if (!response.ok) {
+          const error = new Error(payload.detail || "Performance API request failed");
+          error.status = response.status;
+          throw error;
         }
+        return payload;
       });
-      return slices;
+    }
+
+    function performanceRequest(includeWeather, overrides = {}) {
+      return {
+        rider: { mass_kg: readNumber(els.riderMass) },
+        bike: {
+          mass_kg: readNumber(els.bikeMass),
+          cda_m2: readNumber(els.cda),
+          rolling_resistance_coefficient: readNumber(els.crr)
+        },
+        include_weather: includeWeather,
+        wind_exposure_factor: DEFAULT_WIND_EXPOSURE_FACTOR,
+        gpx_text: state.gpxText,
+        temperature_c: readNumber(els.temperature),
+        wind_direction_deg: normalizeDegrees(readNumber(els.windDirection)),
+        segments: state.segments.map((segment, index) => ({
+          name: `${segment.type}-${index + 1}`,
+          type: segment.type,
+          start_distance_m: segment.start,
+          end_distance_m: segment.end
+        })),
+        ...overrides
+      };
+    }
+
+    async function apiFetch(path, options = {}) {
+      let lastError = null;
+      for (const base of API_BASE_CANDIDATES) {
+        try {
+          const response = await fetch(`${base}${path}`, options);
+          if (![404, 405].includes(response.status)) {
+            return response;
+          }
+          lastError = new Error(`${base}${path} returned ${response.status}`);
+        } catch (error) {
+          lastError = error;
+        }
+      }
+      throw lastError || new Error(`Could not reach API path ${path}`);
     }
 
     function renderSegmentBreakdown(segmentStats) {
       els.segmentBreakdown.innerHTML = "";
       segmentStats.forEach(stat => {
-        const info = protectionTypes[stat.type];
+        const type = stat.name.split("-")[0];
+        const info = protectionTypes[type] || { label: stat.name };
         const row = document.createElement("div");
         row.className = "breakdown-row";
         row.innerHTML = `
-          <strong>${info.label} · ${meters(stat.distanceM)}</strong>
+          <strong>${info.label} · ${meters(stat.distance_m)}</strong>
           <div class="breakdown-metrics">
-            <span>Grade ${stat.gradientPercent.toFixed(1)}%</span>
-            <span>VAM ${stat.vam.toFixed(0)}</span>
-            <span>Power ${stat.totalPowerW.toFixed(0)} W</span>
-            <span>Aero ${stat.aeroPowerW.toFixed(0)} W</span>
-            <span>Ascent ${stat.ascentM.toFixed(0)} m</span>
-            <span>Time ${formatTime(stat.timeS)}</span>
+            <span>Grade ${stat.avg_gradient_percent.toFixed(1)}%</span>
+            <span>VAM ${stat.vam_m_per_h.toFixed(0)}</span>
+            <span>Aero ${stat.aero_power_w.toFixed(0)} W</span>
+            <span>Ascent ${stat.ascent_m.toFixed(0)} m</span>
+            <span>Time ${formatTime(stat.time_s)}</span>
+            <span>Range ${meters(stat.start_distance_m)}-${meters(stat.end_distance_m)}</span>
           </div>
         `;
         els.segmentBreakdown.appendChild(row);
@@ -909,72 +971,12 @@
       return clamp(((x - padLeft) / plotW) * state.route.distanceM, 0, state.route.distanceM);
     }
 
-    function haversine(lat1, lon1, lat2, lon2) {
-      const earthRadiusM = 6371000;
-      const phi1 = radians(lat1);
-      const phi2 = radians(lat2);
-      const dPhi = radians(lat2 - lat1);
-      const dLambda = radians(lon2 - lon1);
-      const a = Math.sin(dPhi / 2) ** 2 + Math.cos(phi1) * Math.cos(phi2) * Math.sin(dLambda / 2) ** 2;
-      return 2 * earthRadiusM * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    }
-
-    function bearing(lat1, lon1, lat2, lon2) {
-      const phi1 = radians(lat1);
-      const phi2 = radians(lat2);
-      const dLambda = radians(lon2 - lon1);
-      const x = Math.sin(dLambda) * Math.cos(phi2);
-      const y = Math.cos(phi1) * Math.sin(phi2) - Math.sin(phi1) * Math.cos(phi2) * Math.cos(dLambda);
-      return (degrees(Math.atan2(x, y)) + 360) % 360;
-    }
-
-    function cpRemainingFractionAtAltitude(avgAltitudeM) {
-      const points = [
-        [0.25, 1.0000],
-        [1.25, 0.9518],
-        [2.25, 0.8707],
-        [3.25, 0.8062],
-        [4.25, 0.7258]
-      ];
-      const x = Math.max(0, avgAltitudeM) / 1000;
-      if (x <= points[0][0]) return 1.0;
-
-      for (let i = 0; i < points.length - 1; i += 1) {
-        const [x0, y0] = points[i];
-        const [x1, y1] = points[i + 1];
-        if (x >= x0 && x <= x1) {
-          return linearInterpolate(x, x0, y0, x1, y1);
-        }
-      }
-
-      const [x0, y0] = points[points.length - 2];
-      const [x1, y1] = points[points.length - 1];
-      return Math.max(0.5, linearInterpolate(x, x0, y0, x1, y1));
-    }
-
-    function linearInterpolate(x, x0, y0, x1, y1) {
-      if (x1 === x0) return y0;
-      return y0 + (y1 - y0) * ((x - x0) / (x1 - x0));
-    }
-
     function normalizeDegrees(value) {
       return ((value % 360) + 360) % 360;
     }
 
     function readNumber(input) {
       return Number(input.value || 0);
-    }
-
-    function average(values) {
-      return values.reduce((sum, value) => sum + value, 0) / values.length;
-    }
-
-    function radians(value) {
-      return value * Math.PI / 180;
-    }
-
-    function degrees(value) {
-      return value * 180 / Math.PI;
     }
 
     function clamp(value, min, max) {
