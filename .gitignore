@@ -1,27 +1,38 @@
-# Ignore everything
-*
-
-# Allow directories
-!*/
-
-# Allow project folders
-!climbing_performance/
-!climbing_performance/**
-!notebooks/
-!notebooks/**
-!tests/
-!tests/**
-
-# Allow root files
-!.gitignore
-!LICENCE
-!readme.md
-!main.py
-!pyproject.toml
-
-# --- IMPORTANT: override whitelist for cache ---
-__pycache__/
-*.pyc
-
-# Virtual environment (must override whitelist)
+# Environment
+.env
+.env.*
+!.env.example
 .venv/
+venv/
+env/
+
+/articles
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Build and packaging
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# IDEs and editors
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db

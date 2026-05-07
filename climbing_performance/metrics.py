@@ -79,7 +79,14 @@ def compute_air_speed(v_road: float, v_headwind_m_s: float) -> float:
     """
     return v_road + v_headwind_m_s
 
-def estimate_power_components(rider: Rider, bike: Bike, climb: Climb) -> dict:
+def estimate_power_components(
+    rider: Rider,
+    bike: Bike,
+    climb: Climb,
+    *,
+    headwind_m_s: float = 0.0,
+    air_density_kg_m3: float | None = None,
+) -> dict:
     validate_positive(rider.mass_kg, "rider.mass_kg")
     validate_positive(bike.mass_kg, "bike.mass_kg")
     validate_positive(bike.frontal_area_m2, "bike.frontal_area_m2")
@@ -96,11 +103,13 @@ def estimate_power_components(rider: Rider, bike: Bike, climb: Climb) -> dict:
     power_gravity = total_mass * g * v_vertical
     power_rolling = bike.rolling_resistance_coefficient * total_mass * g * v_road
 
-    rho = air_density_at_altitude(climb.avg_altitude_m)
+    rho = air_density_kg_m3
+    if rho is None:
+        rho = air_density_at_altitude(climb.avg_altitude_m)
+    validate_positive(rho, "air_density_kg_m3")
+
     cda = bike.drag_coefficient * bike.frontal_area_m2
-    #TODO disentangle v_headwind from the code and add it as an input parameter or
-    #retrieve it from weather api
-    v_air = compute_air_speed(v_road, v_headwind_m_s=0.0)
+    v_air = max(0.0, compute_air_speed(v_road, v_headwind_m_s=headwind_m_s))
     power_aero = 0.5 * rho * cda * (v_air ** 3)
 
     total_power = power_gravity + power_rolling + power_aero
@@ -110,6 +119,8 @@ def estimate_power_components(rider: Rider, bike: Bike, climb: Climb) -> dict:
         "power_rolling_w": power_rolling,
         "power_aero_w": power_aero,
         "total_power_w": total_power,
+        "headwind_m_s": headwind_m_s,
+        "air_density_kg_m3": rho,
     }
 
 
@@ -118,13 +129,26 @@ def estimate_watts_per_kg(power_w: float, rider: Rider) -> float:
     return power_w / rider.mass_kg
 
 
-def summarise_climb_performance(rider: Rider, bike: Bike, climb: Climb) -> dict:
+def summarise_climb_performance(
+    rider: Rider,
+    bike: Bike,
+    climb: Climb,
+    *,
+    headwind_m_s: float = 0.0,
+    air_density_kg_m3: float | None = None,
+) -> dict:
     gradient_percent = compute_gradient(climb.elevation_gain_m, climb.distance_m)
     vam_m_per_h = compute_vam(climb.elevation_gain_m, climb.time_s)
     v_road = compute_road_speed(climb.distance_m, climb.time_s)
     v_vertical = compute_vertical_speed(climb.elevation_gain_m, climb.time_s)
 
-    power = estimate_power_components(rider, bike, climb)
+    power = estimate_power_components(
+        rider,
+        bike,
+        climb,
+        headwind_m_s=headwind_m_s,
+        air_density_kg_m3=air_density_kg_m3,
+    )
     wkg = estimate_watts_per_kg(power["total_power_w"], rider)
 
     return {
@@ -136,8 +160,21 @@ def summarise_climb_performance(rider: Rider, bike: Bike, climb: Climb) -> dict:
         "watts_per_kg": wkg,
     }
 
-def summarise_full_performance(rider: Rider, bike: Bike, climb: Climb) -> dict:
-    climb_summary = summarise_climb_performance(rider, bike, climb)
+def summarise_full_performance(
+    rider: Rider,
+    bike: Bike,
+    climb: Climb,
+    *,
+    headwind_m_s: float = 0.0,
+    air_density_kg_m3: float | None = None,
+) -> dict:
+    climb_summary = summarise_climb_performance(
+        rider,
+        bike,
+        climb,
+        headwind_m_s=headwind_m_s,
+        air_density_kg_m3=air_density_kg_m3,
+    )
     aslp_summary = summarise_aslp(
         observed_power_w=climb_summary["total_power_w"],
         rider_mass_kg=rider.mass_kg,

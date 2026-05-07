@@ -10,6 +10,7 @@ from .metrics import (
     estimate_power_components,
     estimate_watts_per_kg,
     summarise_climb_performance,
+    summarise_full_performance,
 )
 from .aslp import (
     cp_remaining_fraction_at_altitude,
@@ -17,6 +18,15 @@ from .aslp import (
     altitude_power_loss_percent,
     estimate_aslp_wkg,
     summarise_aslp,
+)
+from .workflow import (
+    RouteSegmentAdjustment,
+    RouteWeatherContext,
+    fetch_route_weather_context,
+    route_heading_at_distance_fraction,
+    route_to_performance_climb,
+    summarise_segmented_route_performance,
+    summarise_gpx_performance,
 )
 
 __all__ = [
@@ -31,4 +41,17 @@ __all__ = [
     "estimate_power_components",
     "estimate_watts_per_kg",
     "summarise_climb_performance",
+    "summarise_full_performance",
+    "cp_remaining_fraction_at_altitude",
+    "sea_level_equivalent_power",
+    "altitude_power_loss_percent",
+    "estimate_aslp_wkg",
+    "summarise_aslp",
+    "RouteSegmentAdjustment",
+    "RouteWeatherContext",
+    "fetch_route_weather_context",
+    "route_heading_at_distance_fraction",
+    "route_to_performance_climb",
+    "summarise_segmented_route_performance",
+    "summarise_gpx_performance",
 ]
