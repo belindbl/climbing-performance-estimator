@@ -51,7 +51,7 @@ def main() -> None:
         rolling_resistance_coefficient=0.004,
     )
 
-    gpx_path = Path("notebooks/la_redoute.gpx")
+    gpx_path = Path("data/la_redoute.gpx")
     if gpx_path.exists():
         route = parse_gpx(gpx_path)
         solo_remaining_m = 865.0

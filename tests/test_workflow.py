@@ -13,7 +13,7 @@ from climbing_performance.workflow import (
 from climbing_performance.gpx import parse_gpx
 
 
-LA_REDOUTE_GPX = Path(__file__).parents[1] / "notebooks" / "la_redoute.gpx"
+LA_REDOUTE_GPX = Path(__file__).parents[1] / "data" / "la_redoute.gpx"
 
 
 def fake_weather_fetcher(

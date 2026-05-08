@@ -1,0 +1,19 @@
+{
+  "status": "static",
+  "source": "static",
+  "latitude": 50.488924,
+  "longitude": 5.707557,
+  "start_date": "2026-04-26",
+  "end_date": "2026-04-26",
+  "warning": null,
+  "samples": [
+    {
+      "time": "2026-04-26T17:00:00+02:00",
+      "temperature_c": 15.4,
+      "relative_humidity_pct": 51.0,
+      "wind_speed_m_s": 3.28,
+      "wind_direction_deg": 21.0,
+      "wind_gusts_m_s": 7.6
+    }
+  ]
+}

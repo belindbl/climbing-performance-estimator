@@ -37,12 +37,9 @@ def _validate_lat_lon(latitude: float, longitude: float) -> None:
 
 
 
-def _select_weather_url(start_date: str, end_date: str, source: str) -> str:
-    if source == "forecast":
-        return OPEN_METEO_FORECAST_URL
-
-    if source == "archive":
-        return OPEN_METEO_ARCHIVE_URL
+def select_weather_source(start_date: str, end_date: str, source: str = "auto") -> str:
+    if source in {"forecast", "archive"}:
+        return source
 
     if source != "auto":
         raise ValueError("source must be 'auto', 'forecast', or 'archive'.")
@@ -51,9 +48,19 @@ def _select_weather_url(start_date: str, end_date: str, source: str) -> str:
     today = date.today()
 
     if end < today:
-        return OPEN_METEO_ARCHIVE_URL
+        return "archive"
 
-    return OPEN_METEO_FORECAST_URL
+    return "forecast"
+
+
+def _select_weather_url(start_date: str, end_date: str, source: str) -> str:
+    selected_source = select_weather_source(start_date, end_date, source)
+
+    if selected_source == "forecast":
+        return OPEN_METEO_FORECAST_URL
+
+    if selected_source == "archive":
+        return OPEN_METEO_ARCHIVE_URL
 
 def _parse_open_meteo_time(value: str, utc_offset_seconds: int) -> datetime:
     tz = timezone(timedelta(seconds=utc_offset_seconds))
