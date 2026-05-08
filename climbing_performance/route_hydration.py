@@ -34,6 +34,7 @@ def hydrate_route_payload(
         return hydrated_payload(
             route,
             weather_payload=static_la_redoute_weather(repo_root),
+            fallback_name="La Redoute",
         )
 
     gpx_text = str(payload.get("gpx_text") or "")
@@ -55,7 +56,11 @@ def hydrate_route_payload(
         temp_path.unlink(missing_ok=True)
 
     weather_payload = weather_for_uploaded_route(route, repo_root, fetcher=fetcher)
-    return hydrated_payload(route, weather_payload=weather_payload)
+    return hydrated_payload(
+        route,
+        weather_payload=weather_payload,
+        fallback_name=payload.get("file_name"),
+    )
 
 
 def weather_for_uploaded_route(
@@ -122,14 +127,19 @@ def weather_for_uploaded_route(
     return payload
 
 
-def hydrated_payload(route: GPXRoute, *, weather_payload: dict[str, Any]) -> dict[str, Any]:
+def hydrated_payload(
+    route: GPXRoute,
+    *,
+    weather_payload: dict[str, Any],
+    fallback_name: str | None = None,
+) -> dict[str, Any]:
     return {
-        "route": route_payload(route),
+        "route": route_payload(route, fallback_name=fallback_name),
         "weather": weather_payload,
     }
 
 
-def route_payload(route: GPXRoute) -> dict[str, Any]:
+def route_payload(route: GPXRoute, *, fallback_name: str | None = None) -> dict[str, Any]:
     cumulative = 0.0
     segments = []
     for segment in route.segments:
@@ -163,6 +173,7 @@ def route_payload(route: GPXRoute) -> dict[str, Any]:
     avg_altitude = sum(elevations) / len(elevations) if elevations else None
 
     return {
+        "name": clean_route_name(fallback_name) or route.name or "GPX Route",
         "points": [
             {
                 "latitude": point.latitude,
@@ -188,6 +199,14 @@ def route_payload(route: GPXRoute) -> dict[str, Any]:
         "start_time": route.start_time.isoformat() if route.start_time else None,
         "end_time": route.end_time.isoformat() if route.end_time else None,
     }
+
+
+def clean_route_name(value: str | None) -> str | None:
+    if value is None:
+        return None
+
+    name = Path(str(value)).stem.replace("_", " ").replace("-", " ").strip()
+    return name or None
 
 
 def static_la_redoute_weather(repo_root: Path) -> dict[str, Any]:

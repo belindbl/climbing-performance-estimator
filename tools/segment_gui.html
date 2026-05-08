@@ -413,7 +413,7 @@
     <section class="workspace">
       <div class="toolbar">
         <div>
-          <h1>La Redoute Segment Model</h1>
+          <h1 id="routeTitle">Climbing Segment Model</h1>
           <div class="subtle" id="routeSummary">Loading GPX route</div>
         </div>
         <div class="toolbar-actions">
@@ -439,11 +439,15 @@
         <div class="advanced-grid">
           <div class="readout"><span>aSLP</span><strong id="aslpPower">--</strong></div>
           <div class="readout"><span>aSLP W/kg</span><strong id="aslpWkg">--</strong></div>
+          <div class="readout"><span>Et. 60 kg W/kg</span><strong id="standardWkg">--</strong></div>
           <div class="readout"><span>VAM</span><strong id="vam">--</strong></div>
           <div class="readout"><span>Altitude loss</span><strong id="altitudeLoss">--</strong></div>
           <div class="readout"><span>Gravity</span><strong id="gravityPower">--</strong></div>
           <div class="readout"><span>Rolling</span><strong id="rollingPower">--</strong></div>
-          <div class="readout"><span>Aero</span><strong id="advancedAeroPower">--</strong></div>
+          <div class="readout"><span>Aero total</span><strong id="advancedAeroPower">--</strong></div>
+          <div class="readout"><span>Aero still-air</span><strong id="stillAirAeroPower">--</strong></div>
+          <div class="readout"><span>Wind delta</span><strong id="windDeltaPower">--</strong></div>
+          <div class="readout"><span>Headwind</span><strong id="headwindReadout">--</strong></div>
           <div class="readout"><span>Air density</span><strong id="airDensity">--</strong></div>
           <div class="readout"><span>Temp</span><strong id="tempReadout">--</strong></div>
           <div class="readout"><span>Wind direction</span><strong id="windDirectionReadout">--</strong></div>
@@ -462,8 +466,8 @@
         <label>Bike weight (kg)<input id="bikeMass" type="number" min="1" step="0.1" value="8"></label>
         <label>CdA (m2)<input id="cda" type="number" min="0" step="0.01" value="0.33"></label>
         <label>Crr<input id="crr" type="number" min="0" step="0.0005" value="0.004"></label>
-        <label>Temp C<input id="temperature" type="number" step="0.1" value="15.4" readonly></label>
-        <label>Wind deg<input id="windDirection" type="number" min="0" max="360" step="1" value="21" readonly></label>
+        <label>Avg temp C<input id="temperature" type="number" step="0.1" value="15.4" readonly></label>
+        <label>Avg wind deg<input id="windDirection" type="number" min="0" max="360" step="1" value="21" readonly></label>
       </div>
       <div class="sidebar-section">
         <h2>Segments</h2>
@@ -496,13 +500,14 @@
       draggingHandle: null
     };
 
-    const els = {
-      svg: document.getElementById("profile"),
-      routeSummary: document.getElementById("routeSummary"),
-      errorBox: document.getElementById("errorBox"),
-      segmentList: document.getElementById("segmentList"),
-      addBreakpoint: document.getElementById("addBreakpoint"),
-      gpxFile: document.getElementById("gpxFile"),
+      const els = {
+        svg: document.getElementById("profile"),
+        routeTitle: document.getElementById("routeTitle"),
+        routeSummary: document.getElementById("routeSummary"),
+        errorBox: document.getElementById("errorBox"),
+        segmentList: document.getElementById("segmentList"),
+        addBreakpoint: document.getElementById("addBreakpoint"),
+        gpxFile: document.getElementById("gpxFile"),
       riderMass: document.getElementById("riderMass"),
       bikeMass: document.getElementById("bikeMass"),
       cda: document.getElementById("cda"),
@@ -515,11 +520,15 @@
       gradient: document.getElementById("gradient"),
       aslpPower: document.getElementById("aslpPower"),
       aslpWkg: document.getElementById("aslpWkg"),
+      standardWkg: document.getElementById("standardWkg"),
       vam: document.getElementById("vam"),
       altitudeLoss: document.getElementById("altitudeLoss"),
       gravityPower: document.getElementById("gravityPower"),
       rollingPower: document.getElementById("rollingPower"),
       advancedAeroPower: document.getElementById("advancedAeroPower"),
+      stillAirAeroPower: document.getElementById("stillAirAeroPower"),
+      windDeltaPower: document.getElementById("windDeltaPower"),
+      headwindReadout: document.getElementById("headwindReadout"),
       airDensity: document.getElementById("airDensity"),
       tempReadout: document.getElementById("tempReadout"),
       windDirectionReadout: document.getElementById("windDirectionReadout"),
@@ -554,7 +563,7 @@
         if (!file) return;
 
         try {
-          loadRoute(await hydrateRoute({ gpx_text: await file.text() }));
+          loadRoute(await hydrateRoute({ gpx_text: await file.text(), file_name: file.name }));
           render();
         } catch (error) {
           showError(error.message);
@@ -612,6 +621,7 @@
         { start: 0, end: split, type: "protected" },
         { start: split, end: state.route.distanceM, type: "solo" }
       ];
+      updateRouteTitle();
       els.errorBox.textContent = "";
       els.errorBox.style.display = "none";
       syncWeatherControls();
@@ -643,6 +653,7 @@
           startElevationM: segment.start_elevation_m,
           endElevationM: segment.end_elevation_m
         })),
+        name: routePayload.name || "GPX Route",
         distanceM: routePayload.distance_m,
         ascentM: routePayload.ascent_m,
         descentM: routePayload.descent_m,
@@ -660,9 +671,19 @@
       };
     }
 
+    function updateRouteTitle() {
+      const title = `${state.route.name} Segment Model`;
+      els.routeTitle.textContent = title;
+      document.title = title;
+    }
+
     function syncWeatherControls() {
       const sample = nearestWeatherSampleForTime(null);
-      if (!sample) return;
+      if (!sample) {
+        els.temperature.value = els.temperature.defaultValue;
+        els.windDirection.value = els.windDirection.defaultValue;
+        return;
+      }
       els.temperature.value = Number(sample.temperature_c).toFixed(1);
       els.windDirection.value = normalizeDegrees(Number(sample.wind_direction_deg)).toFixed(0);
     }
@@ -903,11 +924,15 @@
           els.gradient,
           els.aslpPower,
           els.aslpWkg,
+          els.standardWkg,
           els.vam,
           els.altitudeLoss,
           els.gravityPower,
           els.rollingPower,
           els.advancedAeroPower,
+          els.stillAirAeroPower,
+          els.windDeltaPower,
+          els.headwindReadout,
           els.airDensity,
           els.tempReadout,
           els.windDirectionReadout,
@@ -927,17 +952,27 @@
       els.gradient.textContent = `${result.gradientPercent.toFixed(1)} %`;
       els.aslpPower.textContent = `${result.aslpPowerW.toFixed(0)} W`;
       els.aslpWkg.textContent = result.aslpWkg.toFixed(2);
+      els.standardWkg.textContent = result.standard60Wkg.toFixed(2);
       els.vam.textContent = `${result.vam.toFixed(0)} m/h`;
       els.altitudeLoss.textContent = `${result.altitudeLossPercent.toFixed(1)} %`;
       els.gravityPower.textContent = `${result.gravityPowerW.toFixed(0)} W`;
       els.rollingPower.textContent = `${result.rollingPowerW.toFixed(0)} W`;
       els.advancedAeroPower.textContent = `${result.aeroPowerW.toFixed(0)} W`;
+      els.stillAirAeroPower.textContent = `${result.stillAirAeroPowerW.toFixed(0)} W`;
+      els.windDeltaPower.textContent = `${formatSigned(result.windDeltaPowerW.toFixed(0))} W`;
+      els.headwindReadout.textContent = `${formatSigned(result.headwindMS.toFixed(2))} m/s`;
       els.airDensity.textContent = `${result.airDensityKgM3.toFixed(3)} kg/m3`;
       els.tempReadout.textContent = `${result.temperatureC.toFixed(1)} C`;
       els.windDirectionReadout.textContent = `${result.windDirectionDeg.toFixed(0)} deg`;
       els.windSpeedReadout.textContent = `${result.windSpeedMS.toFixed(2)} m/s`;
       els.weatherSource.textContent = result.weatherLabel;
+      syncWeatherControlsFromResult(result);
       renderSegmentBreakdown(result.segmentStats);
+    }
+
+    function syncWeatherControlsFromResult(result) {
+      els.temperature.value = result.temperatureC.toFixed(1);
+      els.windDirection.value = normalizeDegrees(result.windDirectionDeg).toFixed(0);
     }
 
     function calculatePower() {
@@ -945,18 +980,24 @@
       const riderMass = readNumber(els.riderMass);
       const bikeMass = readNumber(els.bikeMass);
       const totalMass = riderMass + bikeMass;
+      const standardRiderMass = 60;
+      const standardTotalMass = standardRiderMass + bikeMass;
       const cda = readNumber(els.cda);
       const baseCrr = readNumber(els.crr);
 
       let gravityWork = 0;
       let rollingWork = 0;
       let aeroWork = 0;
+      let stillAirAeroWork = 0;
       let propulsiveWork = 0;
+      let standardPropulsiveWork = 0;
       let brakingWork = 0;
       let weatherWeightedTimeS = 0;
       let temperatureTimeSum = 0;
       let windSpeedTimeSum = 0;
-      let windDirectionTimeSum = 0;
+      let windDirectionSinTimeSum = 0;
+      let windDirectionCosTimeSum = 0;
+      let headwindTimeSum = 0;
       let airDensityTimeSum = 0;
       const segmentStats = state.segments.map((segment, index) => ({
         index,
@@ -997,7 +1038,9 @@
         weatherWeightedTimeS += segment.elapsedS;
         temperatureTimeSum += temperatureC * segment.elapsedS;
         windSpeedTimeSum += windSpeedMS * segment.elapsedS;
-        windDirectionTimeSum += windDirectionDeg * segment.elapsedS;
+        windDirectionSinTimeSum += Math.sin(radians(windDirectionDeg)) * segment.elapsedS;
+        windDirectionCosTimeSum += Math.cos(radians(windDirectionDeg)) * segment.elapsedS;
+        headwindTimeSum += headwindMS * segment.elapsedS;
         airDensityTimeSum += rho * segment.elapsedS;
         const slices = segmentSlices(segment);
         for (const slice of slices) {
@@ -1010,14 +1053,21 @@
           const gravitySlice = totalMass * G * elevationChangeM;
           const rollingSlice = baseCrr * totalMass * G * slice.distanceM;
           const aeroSlice = 0.5 * rho * cda * typeInfo.aeroMultiplier * Math.pow(airSpeed, 3) * timeS;
+          const stillAirAeroSlice = 0.5 * rho * cda * typeInfo.aeroMultiplier * Math.pow(roadSpeed, 3) * timeS;
           const netSliceWork = gravitySlice + rollingSlice + aeroSlice;
           const propulsiveSlice = Math.max(0, netSliceWork);
           const brakingSlice = Math.max(0, -netSliceWork);
+          const standardGravitySlice = standardTotalMass * G * elevationChangeM;
+          const standardRollingSlice = baseCrr * standardTotalMass * G * slice.distanceM;
+          const standardNetSliceWork = standardGravitySlice + standardRollingSlice + aeroSlice;
+          const standardPropulsiveSlice = Math.max(0, standardNetSliceWork);
 
           gravityWork += gravitySlice;
           rollingWork += rollingSlice;
           aeroWork += aeroSlice;
+          stillAirAeroWork += stillAirAeroSlice;
           propulsiveWork += propulsiveSlice;
+          standardPropulsiveWork += standardPropulsiveSlice;
           brakingWork += brakingSlice;
 
           const stat = segmentStats[slice.overlayIndex];
@@ -1034,6 +1084,7 @@
       }
 
       const totalPowerW = propulsiveWork / route.durationS;
+      const standard60PowerW = standardPropulsiveWork / route.durationS;
       const cpFraction = cpRemainingFractionAtAltitude(route.avgAltitudeM);
       const aslpPowerW = totalPowerW / cpFraction;
       const averageTemperatureC = weatherWeightedTimeS > 0
@@ -1043,8 +1094,11 @@
         ? windSpeedTimeSum / weatherWeightedTimeS
         : 0;
       const averageWindDirectionDeg = weatherWeightedTimeS > 0
-        ? windDirectionTimeSum / weatherWeightedTimeS
+        ? weightedDirectionDegrees(windDirectionSinTimeSum, windDirectionCosTimeSum)
         : normalizeDegrees(readNumber(els.windDirection));
+      const averageHeadwindMS = weatherWeightedTimeS > 0
+        ? headwindTimeSum / weatherWeightedTimeS
+        : 0;
       const averageAirDensity = weatherWeightedTimeS > 0
         ? airDensityTimeSum / weatherWeightedTimeS
         : airDensityAtAltitudeAndTemperature(route.avgAltitudeM, averageTemperatureC);
@@ -1053,8 +1107,11 @@
         gravityPowerW: gravityWork / route.durationS,
         rollingPowerW: rollingWork / route.durationS,
         aeroPowerW: aeroWork / route.durationS,
+        stillAirAeroPowerW: stillAirAeroWork / route.durationS,
+        windDeltaPowerW: (aeroWork - stillAirAeroWork) / route.durationS,
         brakingPowerW: brakingWork / route.durationS,
         wkg: totalPowerW / riderMass,
+        standard60Wkg: standard60PowerW / standardRiderMass,
         gradientPercent: route.ascentM / route.distanceM * 100,
         vam: route.ascentM / (route.durationS / 3600),
         aslpPowerW,
@@ -1064,6 +1121,7 @@
         temperatureC: averageTemperatureC,
         windDirectionDeg: averageWindDirectionDeg,
         windSpeedMS: averageWindSpeedMS,
+        headwindMS: averageHeadwindMS,
         weatherLabel: weatherLabel(),
         segmentStats: segmentStats.map(stat => ({
           ...stat,
@@ -1232,8 +1290,19 @@
       return ((value % 360) + 360) % 360;
     }
 
+    function weightedDirectionDegrees(sinSum, cosSum) {
+      if (sinSum === 0 && cosSum === 0) return 0;
+      return normalizeDegrees(degrees(Math.atan2(sinSum, cosSum)));
+    }
+
     function readNumber(input) {
       return Number(input.value || 0);
+    }
+
+    function formatSigned(value) {
+      const number = Number(value);
+      if (!Number.isFinite(number)) return value;
+      return number > 0 ? `+${value}` : `${value}`;
     }
 
     function average(values) {

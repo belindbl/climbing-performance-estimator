@@ -57,6 +57,7 @@ def test_bundled_la_redoute_uses_static_weather_without_fetching():
     )
 
     assert payload["route"]["distance_m"] > 1000
+    assert payload["route"]["name"] == "La Redoute"
     assert payload["weather"]["status"] == "static"
     assert payload["weather"]["samples"][0]["temperature_c"] == pytest.approx(15.4)
 
@@ -89,12 +90,13 @@ def test_uploaded_untimestamped_gpx_returns_route_without_fetching(tmp_path):
 """
 
     payload = hydrate_route_payload(
-        {"gpx_text": gpx_text},
+        {"gpx_text": gpx_text, "file_name": "Evening_Ride.gpx"},
         tmp_path,
         fetcher=forbidden_fetcher,
     )
 
     assert payload["route"]["distance_m"] > 0
+    assert payload["route"]["name"] == "Evening Ride"
     assert payload["route"]["duration_s"] is None
     assert payload["weather"]["status"] == "unavailable"
     assert payload["weather"]["samples"] == []
