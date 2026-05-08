@@ -20,9 +20,11 @@ from .aslp import (
     summarise_aslp,
 )
 from .workflow import (
+    MOTORCYCLE_DRAFT_DRAG_FRACTIONS,
     RouteSegmentAdjustment,
     RouteWeatherContext,
     fetch_route_weather_context,
+    motorcycle_draft_aero_multiplier,
     route_heading_at_distance_fraction,
     route_to_performance_climb,
     summarise_segmented_route_performance,
@@ -47,9 +49,11 @@ __all__ = [
     "altitude_power_loss_percent",
     "estimate_aslp_wkg",
     "summarise_aslp",
+    "MOTORCYCLE_DRAFT_DRAG_FRACTIONS",
     "RouteSegmentAdjustment",
     "RouteWeatherContext",
     "fetch_route_weather_context",
+    "motorcycle_draft_aero_multiplier",
     "route_heading_at_distance_fraction",
     "route_to_performance_climb",
     "summarise_segmented_route_performance",

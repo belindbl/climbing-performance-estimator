@@ -6,6 +6,7 @@ from climbing_performance.weather import WeatherAPIError
 from climbing_performance.gpx import parse_gpx
 from climbing_performance.workflow import (
     RouteSegmentAdjustment,
+    motorcycle_draft_aero_multiplier,
     summarise_gpx_performance,
 )
 
@@ -57,10 +58,10 @@ def main() -> None:
         solo_remaining_m = 865.0
         segment_adjustments = [
             RouteSegmentAdjustment(
-                name="protected",
+                name="moto_7_5m",
                 start_distance_m=0.0,
                 end_distance_m=route.distance_m - solo_remaining_m,
-                aero_multiplier=0.65,
+                aero_multiplier=motorcycle_draft_aero_multiplier(7.5),
             ),
             RouteSegmentAdjustment.from_remaining_distance(
                 "solo",

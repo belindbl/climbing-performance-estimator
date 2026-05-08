@@ -7,6 +7,7 @@ from climbing_performance.models import Bike, Rider
 from climbing_performance.weather import WeatherSample
 from climbing_performance.workflow import (
     RouteSegmentAdjustment,
+    motorcycle_draft_aero_multiplier,
     route_to_performance_climb,
     summarise_gpx_performance,
 )
@@ -149,3 +150,48 @@ def test_summarise_gpx_performance_supports_drafting_breakpoint():
     assert adjusted["segment_adjustments"]["solo"]["distance_m"] == pytest.approx(
         solo_remaining_m,
     )
+
+
+def test_motorcycle_draft_aero_multiplier_interpolates_published_drag_fractions():
+    assert motorcycle_draft_aero_multiplier(2.64) == pytest.approx(0.52)
+    assert motorcycle_draft_aero_multiplier(10.0) == pytest.approx(0.77)
+    assert motorcycle_draft_aero_multiplier(7.5) == pytest.approx(0.6850815217)
+
+
+def test_motorcycle_draft_reduces_modeled_power():
+    rider = Rider(mass_kg=66.0)
+    bike = Bike.default()
+    route = parse_gpx(LA_REDOUTE_GPX)
+    solo_remaining_m = 865.0
+    adjustments = [
+        RouteSegmentAdjustment(
+            name="moto_7_5m",
+            start_distance_m=0.0,
+            end_distance_m=route.distance_m - solo_remaining_m,
+            aero_multiplier=motorcycle_draft_aero_multiplier(7.5),
+        ),
+        RouteSegmentAdjustment.from_remaining_distance(
+            "solo",
+            route.distance_m,
+            start_remaining_m=solo_remaining_m,
+            end_remaining_m=0.0,
+            aero_multiplier=1.0,
+        ),
+    ]
+
+    solo = summarise_gpx_performance(
+        LA_REDOUTE_GPX,
+        rider,
+        bike,
+        include_weather=False,
+    )
+    moto = summarise_gpx_performance(
+        LA_REDOUTE_GPX,
+        rider,
+        bike,
+        include_weather=False,
+        segment_adjustments=adjustments,
+    )
+
+    assert moto["total_power_w"] < solo["total_power_w"]
+    assert moto["segment_adjustments"]["moto_7_5m"]["aero_power_w"] > 0.0

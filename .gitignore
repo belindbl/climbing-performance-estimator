@@ -7,6 +7,7 @@ venv/
 env/
 
 /articles
+data/cache/active_segment_scenario.json
 data/cache/weather_payloads.json
 
 # Python cache

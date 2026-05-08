@@ -17,6 +17,9 @@ sys.path.insert(0, str(REPO_ROOT))
 from climbing_performance.route_hydration import hydrate_route_payload
 
 
+ACTIVE_SCENARIO_PATH = REPO_ROOT / "data" / "cache" / "active_segment_scenario.json"
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Start the segment GUI server and open it in a browser."
@@ -66,24 +69,60 @@ class SegmentGuiHandler(http.server.SimpleHTTPRequestHandler):
         self.repo_root = repo_root
         super().__init__(*args, directory=str(repo_root), **kwargs)
 
+    def do_GET(self) -> None:
+        if self.path == "/api/scenarios/active":
+            if not ACTIVE_SCENARIO_PATH.exists():
+                self._send_json({"error": "No active scenario saved yet."}, status=404)
+                return
+
+            try:
+                payload = json.loads(ACTIVE_SCENARIO_PATH.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError) as exc:
+                self._send_json({"error": str(exc)}, status=502)
+                return
+
+            self._send_json(payload)
+            return
+
+        super().do_GET()
+
     def do_POST(self) -> None:
+        if self.path == "/api/routes/hydrate":
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+                raw_body = self.rfile.read(length).decode("utf-8")
+                request_payload = json.loads(raw_body or "{}")
+                response_payload = hydrate_route_payload(request_payload, self.repo_root)
+            except (json.JSONDecodeError, TypeError, ValueError) as exc:
+                self._send_json({"error": str(exc)}, status=400)
+                return
+            except Exception as exc:
+                self._send_json({"error": str(exc)}, status=502)
+                return
+
+            self._send_json(response_payload)
+            return
+
+        if self.path == "/api/scenarios/active":
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+                raw_body = self.rfile.read(length).decode("utf-8")
+                request_payload = json.loads(raw_body or "{}")
+                ACTIVE_SCENARIO_PATH.parent.mkdir(parents=True, exist_ok=True)
+                ACTIVE_SCENARIO_PATH.write_text(
+                    json.dumps(request_payload, indent=2, sort_keys=True),
+                    encoding="utf-8",
+                )
+            except (json.JSONDecodeError, TypeError, ValueError, OSError) as exc:
+                self._send_json({"error": str(exc)}, status=400)
+                return
+
+            self._send_json({"status": "saved", "path": str(ACTIVE_SCENARIO_PATH)})
+            return
+
         if self.path != "/api/routes/hydrate":
             self.send_error(404, "Not Found")
             return
-
-        try:
-            length = int(self.headers.get("Content-Length", "0"))
-            raw_body = self.rfile.read(length).decode("utf-8")
-            request_payload = json.loads(raw_body or "{}")
-            response_payload = hydrate_route_payload(request_payload, self.repo_root)
-        except (json.JSONDecodeError, TypeError, ValueError) as exc:
-            self._send_json({"error": str(exc)}, status=400)
-            return
-        except Exception as exc:
-            self._send_json({"error": str(exc)}, status=502)
-            return
-
-        self._send_json(response_payload)
 
     def _send_json(self, payload: dict, *, status: int = 200) -> None:
         body = json.dumps(payload).encode("utf-8")

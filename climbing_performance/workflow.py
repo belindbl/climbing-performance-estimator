@@ -28,6 +28,14 @@ from climbing_performance.weather import (
 WeatherFetcher = Callable[[float, float, str, str], list[WeatherSample]]
 
 
+MOTORCYCLE_DRAFT_DRAG_FRACTIONS = (
+    (2.64, 0.52),
+    (10.0, 0.77),
+    (30.0, 0.88),
+    (50.0, 0.93),
+)
+
+
 @dataclass(frozen=True)
 class RouteWeatherContext:
     sample: WeatherSample
@@ -63,6 +71,26 @@ class RouteSegmentAdjustment:
             aero_multiplier=aero_multiplier,
             rolling_resistance_coefficient=rolling_resistance_coefficient,
         )
+
+
+def motorcycle_draft_aero_multiplier(separation_m: float) -> float:
+    """Estimate cyclist aero drag fraction when drafting behind a lead motorcycle."""
+    if separation_m <= 0.0:
+        raise ValueError("separation_m must be > 0.")
+
+    anchors = MOTORCYCLE_DRAFT_DRAG_FRACTIONS
+    if separation_m <= anchors[0][0]:
+        return anchors[0][1]
+    if separation_m >= anchors[-1][0]:
+        return anchors[-1][1]
+
+    for (near_m, near_fraction), (far_m, far_fraction) in zip(anchors, anchors[1:]):
+        if near_m <= separation_m <= far_m:
+            span = far_m - near_m
+            weight = (separation_m - near_m) / span
+            return near_fraction + (far_fraction - near_fraction) * weight
+
+    return 1.0
 
 
 def route_to_performance_climb(route: GPXRoute) -> Climb:

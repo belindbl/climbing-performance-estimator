@@ -480,21 +480,24 @@
 
   <script>
     const HYDRATE_API = "/api/routes/hydrate";
+    const ACTIVE_SCENARIO_API = "/api/scenarios/active";
     const G = 9.81;
     const RHO0 = 1.225;
     const SCALE_HEIGHT_M = 8500;
     const STANDARD_TEMP_K = 288.15;
 
     const protectionTypes = {
-      protected: { label: "Protected", aeroMultiplier: 0.65, color: "#4f8f72" },
-      low: { label: "Low protection", aeroMultiplier: 0.82, color: "#d1a23b" },
+      moto5: { label: "Moto 5 m", aeroMultiplier: 0.60, color: "#4f8f72" },
+      moto10: { label: "Moto 10 m", aeroMultiplier: 0.77, color: "#3d7fa3" },
+      protected: { label: "Protected", aeroMultiplier: 0.55, color: "#7a9152" },
+      low: { label: "Low protection", aeroMultiplier: 0.58, color: "#d1a23b" },
       solo: { label: "Solo", aeroMultiplier: 1.0, color: "#b85d4d" }
     };
 
     const state = {
       route: null,
       segments: [
-        { start: 0, end: 0, type: "protected" },
+        { start: 0, end: 0, type: "moto10" },
         { start: 0, end: 0, type: "solo" }
       ],
       draggingHandle: null
@@ -618,7 +621,7 @@
       const soloRemaining = Math.min(865, state.route.distanceM / 2);
       const split = Math.max(0, state.route.distanceM - soloRemaining);
       state.segments = [
-        { start: 0, end: split, type: "protected" },
+        { start: 0, end: split, type: "moto10" },
         { start: split, end: state.route.distanceM, type: "solo" }
       ];
       updateRouteTitle();
@@ -968,6 +971,78 @@
       els.weatherSource.textContent = result.weatherLabel;
       syncWeatherControlsFromResult(result);
       renderSegmentBreakdown(result.segmentStats);
+      persistActiveScenario(result);
+    }
+
+    const persistActiveScenario = debounce(result => {
+      if (!state.route) return;
+      fetch(ACTIVE_SCENARIO_API, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(activeScenarioPayload(result))
+      }).catch(() => {});
+    }, 300);
+
+    function activeScenarioPayload(result) {
+      return {
+        saved_at: new Date().toISOString(),
+        route: {
+          name: state.route.name,
+          distance_m: state.route.distanceM,
+          ascent_m: state.route.ascentM,
+          duration_s: state.route.durationS,
+          avg_altitude_m: state.route.avgAltitudeM
+        },
+        route_segments: state.route.segments.map(segment => ({
+          start_distance_m: segment.startDistanceM,
+          end_distance_m: segment.endDistanceM,
+          distance_m: segment.distanceM,
+          elevation_delta_m: segment.elevationDeltaM,
+          elapsed_s: segment.elapsedS,
+          bearing_deg: segment.bearingDeg,
+          start_time: segment.startTime ? segment.startTime.toISOString() : null,
+          end_time: segment.endTime ? segment.endTime.toISOString() : null,
+          start_elevation_m: segment.startElevationM,
+          end_elevation_m: segment.endElevationM
+        })),
+        weather: {
+          status: state.route.weather.status,
+          source: state.route.weather.source,
+          samples: (state.route.weather.samples || []).map(sample => ({
+            ...sample,
+            time: sample.time instanceof Date ? sample.time.toISOString() : sample.time
+          }))
+        },
+        assumptions: {
+          rider_mass_kg: readNumber(els.riderMass),
+          bike_mass_kg: readNumber(els.bikeMass),
+          cda_m2: readNumber(els.cda),
+          crr: readNumber(els.crr),
+          temperature_c: readNumber(els.temperature),
+          wind_direction_deg: readNumber(els.windDirection)
+        },
+        protection_types: protectionTypes,
+        segments: state.segments.map(segment => {
+          const typeInfo = protectionTypes[segment.type];
+          return {
+            type: segment.type,
+            label: typeInfo.label,
+            start_distance_m: segment.start,
+            end_distance_m: segment.end,
+            aero_multiplier: typeInfo.aeroMultiplier
+          };
+        }),
+        result: result ? {
+          total_power_w: result.totalPowerW,
+          watts_per_kg: result.wkg,
+          aslp_w_per_kg: result.aslpWkg,
+          gravity_power_w: result.gravityPowerW,
+          rolling_power_w: result.rollingPowerW,
+          aero_power_w: result.aeroPowerW,
+          headwind_m_s: result.headwindMS,
+          air_density_kg_m3: result.airDensityKgM3
+        } : null
+      };
     }
 
     function syncWeatherControlsFromResult(result) {
@@ -1297,6 +1372,14 @@
 
     function readNumber(input) {
       return Number(input.value || 0);
+    }
+
+    function debounce(callback, delayMs) {
+      let timeoutId = null;
+      return (...args) => {
+        window.clearTimeout(timeoutId);
+        timeoutId = window.setTimeout(() => callback(...args), delayMs);
+      };
     }
 
     function formatSigned(value) {
