@@ -6,8 +6,6 @@ The project was developed as a technical exploration of applied physics modellin
 
 It combines GPX parsing, environmental context modelling, interactive route segmentation, numerical analysis, and visual tooling into a cohesive local workflow.
 
-> Note: implementation details related to calibration, model tuning, and internal estimation assumptions are intentionally abstracted from this repository documentation.
-
 ---
 
 # Preview
@@ -34,19 +32,11 @@ Detailed breakdown panels exposing component-level analytical outputs.
 
 # Technical Focus
 
-The repository was designed to explore several engineering and analytical domains within a single project:
-
 - geospatial route parsing and processing
 - physics-informed performance estimation
 - structured analytical workflows
-- interactive browser-based tooling
-- 2D and 3D visualisation pipelines
 - environmental and weather-context integration
 - reproducible scenario modelling
-- modular Python package architecture
-- validation-oriented workflow design
-
-The project intentionally combines backend analytical logic with interactive visual tooling rather than separating them into isolated prototypes.
 
 ---
 
@@ -63,8 +53,6 @@ The project parses GPX tracks into structured route representations including:
 - heading information
 - segment-level statistics
 
-The processed route data becomes the foundation for subsequent analytical workflows and visualisation layers.
-
 ## Interactive Route Segmentation
 
 The browser-based GUI allows routes to be segmented interactively through breakpoint placement.
@@ -76,19 +64,6 @@ The segmentation workflow supports:
 - segment classification
 - synchronised 2D and 3D visualisation
 - live analytical updates
-
-This creates a workflow closer to analytical tooling than a static plotting interface.
-
-## 2D and 3D Visualisation
-
-The repository includes both profile-based and spatial visualisation workflows.
-
-The 2D elevation view focuses on:
-
-- gradient inspection
-- segment boundaries
-- climb structure
-- breakpoint placement precision
 
 The 3D view focuses on:
 
@@ -166,16 +141,6 @@ data/
 tests/
   package and workflow validation tests
 ```
-The architecture intentionally separates:
-
-- data models
-- analytical logic
-- environmental enrichment
-- workflow orchestration
-- visual tooling
-- validation scripts
-
-This structure was chosen to keep the repository extensible and maintainable as additional modelling workflows are introduced.
 
 Engineering Considerations
 
@@ -194,16 +159,7 @@ The project intentionally prioritises inspectability and workflow clarity over m
 
 ## Current Status
 
-This is an active independent technical project intended for experimentation, modelling exploration, and portfolio demonstration.
-
-The repository primarily serves as a demonstration of:
-
-applied Python development
-analytical tooling design
-interactive visualisation workflows
-geospatial data handling
-modular software architecture
-reproducible modelling pipelines
+This is an active independent technical project intended for experimentation, modelling exploration.
 
 Future work may expand the environmental modelling, visual rendering, and analytical validation capabilities further.
 
