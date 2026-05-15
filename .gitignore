@@ -6,7 +6,7 @@
 venv/
 env/
 
-/articles
+/resources
 data/cache/active_segment_scenario.json
 data/cache/weather_payloads.json
 
