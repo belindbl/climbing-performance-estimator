@@ -72,3 +72,6 @@ flowchart LR
     RouteData --> MainPipeline
     WeatherData --> MainPipeline
 ```
+## Weather & Terrain Data
+
+Local weather sampled hourly, 9 km IFS forecasts from ECMWF WF API via openmeteo.

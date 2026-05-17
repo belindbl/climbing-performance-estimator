@@ -4,14 +4,16 @@ import argparse
 import json
 import math
 from dataclasses import asdict, dataclass
-from typing import Iterable
+import os
 
 import requests
+from dotenv import load_dotenv
 
+load_dotenv(".env")
 
-ELEVATION_API_URL = "https://api.open-meteo.com/v1/elevation"
+OPENTOPOGRAPHY_API_URL = "https://portal.opentopography.org/API/globaldem"
+OPENTOPOGRAPHY_API_KEY_ENV_NAMES = ("OT_API_KEY", "OPENTOPOGRAPHY_API_KEY")
 EARTH_RADIUS_M = 6_371_000.0
-
 
 @dataclass(frozen=True)
 class SamplePoint:
@@ -57,6 +59,7 @@ def main() -> None:
     parser.add_argument("--step-m", type=float, default=90.0)
     parser.add_argument("--sector-deg", type=float, default=60.0)
     parser.add_argument("--rays", type=int, default=7)
+    parser.add_argument("--demtype", default="COP30")
     parser.add_argument(
         "--json",
         action="store_true",
@@ -72,6 +75,7 @@ def main() -> None:
         step_m=args.step_m,
         sector_deg=args.sector_deg,
         ray_count=args.rays,
+        demtype=args.demtype,
     )
 
     if args.json:
@@ -89,6 +93,7 @@ def probe_terrain_wind(
     step_m: float = 90.0,
     sector_deg: float = 60.0,
     ray_count: int = 7,
+    demtype: str = "COP30",
 ) -> TerrainWindProbe:
     validate_inputs(latitude, longitude, radius_m, step_m, sector_deg, ray_count)
 
@@ -97,7 +102,7 @@ def probe_terrain_wind(
         for distance in distances(step_m, radius_m):
             sample_locations.append(destination_point(latitude, longitude, bearing, distance))
 
-    elevations = fetch_elevations(sample_locations)
+    elevations = fetch_dem_elevations(sample_locations, demtype=demtype)
     center_elevation = elevations[0]
     samples = []
     index = 1
@@ -207,34 +212,121 @@ def destination_point(
 
     return math.degrees(lat2), normalize_longitude(math.degrees(lon2))
 
+def fetch_dem_elevation(
+    latitude: float,
+    longitude: float,
+    demtype: str = "COP30",
+    radius_m: float = 250.0,
+) -> float:
+    return fetch_dem_elevations(
+        [(latitude, longitude)],
+        demtype=demtype,
+        bbox_padding_m=radius_m,
+    )[0]
 
-def fetch_elevations(locations: list[tuple[float, float]]) -> list[float]:
-    elevations = []
-    for batch in batched(locations, 100):
-        params = {
-            "latitude": ",".join(f"{lat:.6f}" for lat, _ in batch),
-            "longitude": ",".join(f"{lon:.6f}" for _, lon in batch),
-        }
-        response = requests.get(ELEVATION_API_URL, params=params, timeout=20)
+
+def fetch_dem_elevations(
+    locations: list[tuple[float, float]],
+    *,
+    demtype: str = "COP30",
+    bbox_padding_m: float = 120.0,
+) -> list[float]:
+    if not locations:
+        return []
+
+    api_key = opentopography_api_key()
+    params = {
+        **bbox_for_locations(locations, padding_m=bbox_padding_m),
+        "demtype": demtype,
+        "outputFormat": "GTiff",
+        "API_Key": api_key,
+    }
+    try:
+        response = requests.get(OPENTOPOGRAPHY_API_URL, params=params, timeout=60)
         response.raise_for_status()
-        payload = response.json()
-        if "elevation" not in payload:
-            raise RuntimeError(f"Elevation API response missing elevation: {payload}")
-        elevations.extend(float(value) for value in payload["elevation"])
-
-    if len(elevations) != len(locations):
+    except requests.RequestException as exc:
         raise RuntimeError(
-            f"Elevation API returned {len(elevations)} values for {len(locations)} points."
+            "OpenTopography DEM request failed. Check network access, DEM type, "
+            "bounding box, and API key."
+        ) from None
+    if not response.content:
+        raise RuntimeError(
+            "OpenTopography returned an empty DEM response. "
+            f"DEM type: {demtype}; bbox: {bbox_for_locations(locations, padding_m=bbox_padding_m)}. "
+            "Try --demtype COP30 for global coverage or check that the selected DEM covers the area."
         )
-    return elevations
+
+    try:
+        from rasterio.io import MemoryFile
+    except ImportError as exc:
+        raise RuntimeError(
+            "rasterio is required to sample OpenTopography GeoTIFF responses. "
+            "Install project dependencies with `python -m pip install -e .`."
+        ) from exc
+
+    try:
+        with MemoryFile(response.content) as memory_file:
+            with memory_file.open() as dataset:
+                nodata = dataset.nodata
+                elevations = []
+                samples = dataset.sample(
+                    [(lon, lat) for lat, lon in locations],
+                    masked=True,
+                )
+                for sample in samples:
+                    value = sample[0]
+                    if getattr(value, "mask", False):
+                        raise RuntimeError(
+                            f"{demtype} has no DEM value for at least one sample point."
+                        )
+                    elevation = float(value)
+                    if nodata is not None and math.isclose(elevation, float(nodata)):
+                        raise RuntimeError(
+                            f"{demtype} returned nodata for at least one sample point."
+                        )
+                    if elevation <= -9000.0:
+                        raise RuntimeError(
+                            f"{demtype} returned nodata-like elevation {elevation}."
+                        )
+                    elevations.append(elevation)
+                return elevations
+    except RuntimeError:
+        raise
+    except Exception as exc:
+        raise RuntimeError(
+            "Could not read OpenTopography response as GeoTIFF."
+        ) from exc
 
 
-def batched(
-    values: list[tuple[float, float]],
-    size: int,
-) -> Iterable[list[tuple[float, float]]]:
-    for index in range(0, len(values), size):
-        yield values[index : index + size]
+def opentopography_api_key() -> str:
+    for env_name in OPENTOPOGRAPHY_API_KEY_ENV_NAMES:
+        api_key = os.getenv(env_name)
+        if api_key:
+            return api_key
+    names = " or ".join(OPENTOPOGRAPHY_API_KEY_ENV_NAMES)
+    raise RuntimeError(f"Set {names} in your environment or .env file.")
+
+
+def bbox_for_locations(
+    locations: list[tuple[float, float]],
+    *,
+    padding_m: float,
+) -> dict[str, str]:
+    min_lat = min(lat for lat, _ in locations)
+    max_lat = max(lat for lat, _ in locations)
+    min_lon = min(lon for _, lon in locations)
+    max_lon = max(lon for _, lon in locations)
+    mid_lat = (min_lat + max_lat) / 2.0
+    lat_padding = padding_m / 111_320.0
+    lon_padding = padding_m / (
+        111_320.0 * max(0.01, math.cos(math.radians(mid_lat)))
+    )
+    return {
+        "south": f"{min_lat - lat_padding:.6f}",
+        "north": f"{max_lat + lat_padding:.6f}",
+        "west": f"{min_lon - lon_padding:.6f}",
+        "east": f"{max_lon + lon_padding:.6f}",
+    }
 
 
 def shelter_to_exposure_factor(shelter_index: float) -> float:
@@ -259,7 +351,7 @@ def normalize_longitude(value: float) -> float:
 
 def probe_to_payload(probe: TerrainWindProbe) -> dict:
     payload = asdict(probe)
-    payload["data_source"] = "Open-Meteo Elevation API, Copernicus DEM GLO-90"
+    payload["data_source"] = "OpenTopography Global DEM API"
     payload["interpretation"] = (
         "Experimental directional terrain shelter probe. Exposure factor is a "
         "screening value, not a calibrated wind-speed prediction."
