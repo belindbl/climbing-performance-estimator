@@ -159,9 +159,9 @@ The project intentionally prioritises inspectability and workflow clarity over m
 
 ## Current Status
 
-This is an active independent technical project intended for experimentation, modelling exploration.
+This is an active independent technical project intended for experimentation, modelling exploration, and analytical system design.
 
-Future work may expand the environmental modelling, visual rendering, and analytical validation capabilities further.
+Future work may expand the environmental and terrain modelling capabilities further, including integration of DEM-based terrain analysis for estimating factors such as wind sheltering and exposure. Additional work may also include expanded visual rendering, route analysis, and analytical validation workflows.
 
 ## License
 
