@@ -368,11 +368,11 @@ def route_heading_at_distance_fraction(
         raise ValueError("Route has no segments.")
 
     target_distance = route.distance_m * fraction
-    cumulative = 0.0
+    cumulative_distance_m = 0.0
 
     for segment in route.segments:
-        cumulative += segment.distance_m
-        if cumulative >= target_distance:
+        cumulative_distance_m += segment.distance_m
+        if cumulative_distance_m >= target_distance:
             return segment.bearing_deg
 
     return route.segments[-1].bearing_deg
@@ -416,7 +416,7 @@ def _segment_adjustment_slices(
     adjustments: list[RouteSegmentAdjustment],
 ) -> list[tuple[float, RouteSegmentAdjustment]]:
     slices = []
-    cursor = start_distance_m
+    cumulative_distance_m = 0.0
 
     for adjustment in adjustments:
         overlap_start = max(start_distance_m, adjustment.start_distance_m)
@@ -424,13 +424,13 @@ def _segment_adjustment_slices(
         if overlap_end <= overlap_start:
             continue
 
-        if overlap_start > cursor:
+        if overlap_start > cumulative_distance_m:
             slices.append(
                 (
-                    overlap_start - cursor,
+                    overlap_start - cumulative_distance_m,
                     RouteSegmentAdjustment(
                         name="unadjusted",
-                        start_distance_m=cursor,
+                        start_distance_m=cumulative_distance_m,
                         end_distance_m=overlap_start,
                     ),
                 )
@@ -438,15 +438,15 @@ def _segment_adjustment_slices(
 
         if overlap_end > overlap_start:
             slices.append((overlap_end - overlap_start, adjustment))
-            cursor = overlap_end
+            cumulative_distance_m = overlap_end
 
-    if cursor < end_distance_m:
+    if cumulative_distance_m < end_distance_m:
         slices.append(
             (
-                end_distance_m - cursor,
+                end_distance_m - cumulative_distance_m,
                 RouteSegmentAdjustment(
                     name="unadjusted",
-                    start_distance_m=cursor,
+                    start_distance_m=cumulative_distance_m,
                     end_distance_m=end_distance_m,
                 ),
             )
