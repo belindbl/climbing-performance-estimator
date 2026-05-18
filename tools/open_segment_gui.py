@@ -34,7 +34,7 @@ def main() -> None:
 
     with socketserver.TCPServer((args.host, port), handler) as server:
         server.allow_reuse_address = True
-        url = f"http://{args.host}:{port}/tools/segment_gui.html"
+        url = f"http://{args.host}:{port}/tools/segment_gui/segment_gui.html"
         thread = threading.Thread(target=server.serve_forever, daemon=True)
         thread.start()
 
