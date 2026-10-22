@@ -163,6 +163,6 @@ This is an active independent technical project intended for experimentation, mo
 
 Future work may expand the environmental and terrain modelling capabilities further, including integration of DEM-based terrain analysis for estimating factors such as wind sheltering and exposure. Additional work may also include expanded visual rendering, route analysis, and analytical validation workflows.
 
-## License
+## Licence
 
 See [LICENCE](LICENCE).
