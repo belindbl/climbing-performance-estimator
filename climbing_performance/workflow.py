@@ -416,7 +416,7 @@ def _segment_adjustment_slices(
     adjustments: list[RouteSegmentAdjustment],
 ) -> list[tuple[float, RouteSegmentAdjustment]]:
     slices = []
-    cumulative_distance_m = 0.0
+    cumulative_distance_m = start_distance_m
 
     for adjustment in adjustments:
         overlap_start = max(start_distance_m, adjustment.start_distance_m)

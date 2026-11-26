@@ -135,13 +135,7 @@ class GPXRoute:
         location: str = "midpoint",
         pad: timedelta = timedelta(hours=1),
     ) -> WeatherQueryWindow:
-        """
-        Create a weather query window for the route.
 
-        location:
-            "midpoint" gives the distance midpoint.
-            "centroid" gives the mean coordinate.
-        """
         if self.start_time is None or self.end_time is None:
             raise ValueError(
                 "Route has no timestamps. Use assign_estimated_times() first "
@@ -176,6 +170,13 @@ def parse_gpx(path: str | Path) -> GPXRoute:
     segments = build_route_segments(points)
 
     return GPXRoute(points=points, segments=segments, name=_extract_route_name(root))
+
+def dem_anchor_samples(route: GPXRoute, every_n: int = 30,) -> dict[datetime, TrackPoint]:
+    return {
+        point.time: point
+        for point in sample_weather_points(route, every_n=every_n)
+        if point.time is not None
+    }
 
 
 def build_route_segments(points: list[TrackPoint]) -> list[RouteSegment]:
@@ -321,12 +322,6 @@ def assign_estimated_times(
     start_time: datetime,
     duration: timedelta,
 ) -> GPXRoute:
-    """
-    Assign estimated timestamps to a GPX route that has no time data.
-
-    Timing is distributed proportionally by distance. This is suitable for
-    planned race simulations when the GPX file only contains geometry.
-    """
     if not route.points:
         raise ValueError("Route has no points.")
 
@@ -510,7 +505,6 @@ def _parse_point(elem: ET.Element, segment_index: int) -> TrackPoint:
 
 
 def _parse_gpx_time(value: str) -> datetime:
-    # GPX commonly uses UTC timestamps ending with Z.
     value = value.strip()
 
     if value.endswith("Z"):

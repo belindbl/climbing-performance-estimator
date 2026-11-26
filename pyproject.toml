@@ -16,5 +16,9 @@ dependencies = [
     "requests",
     "tzdata",
 ]
+
+[dependency-groups]
+dev = ["pytest"]
+
 [tool.setuptools]
 packages = ["climbing_performance"]

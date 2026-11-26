@@ -6,6 +6,27 @@ The project was developed as a technical exploration of applied physics modellin
 
 It combines GPX parsing, environmental context modelling, interactive route segmentation, numerical analysis, and visual tooling into a cohesive local workflow.
 
+## Setup and Development
+
+The project uses [uv](https://docs.astral.sh/uv/) to manage Python and dependencies. It targets Python 3.12, as recorded in `.python-version` and `pyproject.toml`.
+
+Install uv using its [official installation instructions](https://docs.astral.sh/uv/getting-started/installation/), then run:
+
+```powershell
+uv python install
+uv sync
+```
+
+Run the command-line example, start the browser GUI, or run the test suite with the project's environment:
+
+```powershell
+uv run python main.py
+uv run python tools/open_segment_gui.py
+uv run pytest
+```
+
+Use `uv add <package>` for runtime dependencies and `uv add --dev <package>` for development dependencies. These commands update `pyproject.toml` and `uv.lock` together.
+
 ---
 
 # Preview

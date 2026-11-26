@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>GPX Comparison</title>
+  <link rel="stylesheet" href="gpx_compare.css">
+</head>
+<body>
+  <main>
+    <section class="workspace">
+      <div class="toolbar">
+        <div>
+          <h1>GPX Comparison</h1>
+          <div class="subtle" id="summary">No tracks loaded</div>
+        </div>
+        <div class="toolbar-actions">
+          <button id="profileViewButton" class="active">2D</button>
+          <button id="route3dViewButton">3D</button>
+          <button id="reset3dView">Reset</button>
+          <label class="file-button">
+            <span>Load GPX</span>
+            <input id="gpxFiles" type="file" multiple accept=".gpx,application/gpx+xml,application/xml,text/xml">
+          </label>
+        </div>
+      </div>
+
+      <div class="error" id="errorBox"></div>
+
+      <div class="boundary-bar">
+        <button id="startBoundary" class="active">Start</button>
+        <button id="endBoundary">End</button>
+        <span id="cursorReadout" class="cursor-readout">--</span>
+      </div>
+
+      <div class="chart-wrap">
+        <div id="profileView" class="profile-view active">
+          <svg id="profile" viewBox="0 0 980 420" role="img" aria-label="GPX elevation comparison"></svg>
+        </div>
+        <div id="route3dView" class="route3d-wrap" aria-label="3D GPX route comparison">
+          <div class="route3d-status" id="route3dStatus">3D route loading</div>
+        </div>
+      </div>
+
+      <div class="stats">
+        <div class="stat"><span>Segment</span><strong id="segmentDistance">--</strong></div>
+        <div class="stat"><span>Reference</span><strong id="referenceName">--</strong></div>
+        <div class="stat"><span>Best Time</span><strong id="bestTime">--</strong></div>
+        <div class="stat"><span>Fastest eW/kg</span><strong id="bestWkg">--</strong></div>
+      </div>
+
+      <section class="results">
+        <h2>Results</h2>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Track</th>
+                <th>Time</th>
+                <th>Gap</th>
+                <th>Power</th>
+                <th>W/kg</th>
+                <th>60 kg W/kg</th>
+                <th>Speed</th>
+                <th>VAM</th>
+                <th>Gradient</th>
+              </tr>
+            </thead>
+            <tbody id="resultsBody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="results">
+        <h2>Gaps</h2>
+        <svg id="gapChart" viewBox="0 0 980 260" role="img" aria-label="Relative time gaps"></svg>
+      </section>
+    </section>
+
+    <aside class="sidebar">
+      <div class="sidebar-section">
+        <h2>Assumptions</h2>
+      </div>
+      <div class="inputs">
+        <label>Bike kg<input id="bikeMass" type="number" min="1" step="0.1" value="8"></label>
+        <label>CdA<input id="cda" type="number" min="0" step="0.01" value="0.33"></label>
+        <label>Crr<input id="crr" type="number" min="0" step="0.0005" value="0.004"></label>
+        <label>Reference<select id="referenceTrack"></select></label>
+        <label>Sync<select id="syncMode">
+          <option value="distance">Distance</option>
+          <option value="location">Location</option>
+        </select></label>
+      </div>
+
+      <div class="sidebar-section">
+        <h2>Tracks</h2>
+      </div>
+      <div class="track-list" id="trackList"></div>
+
+      <div class="sidebar-section">
+        <h2>Selection</h2>
+      </div>
+      <div class="inputs single">
+        <label>Start m<input id="startDistance" type="number" min="0" step="1" value="0"></label>
+        <label>End m<input id="endDistance" type="number" min="0" step="1" value="0"></label>
+      </div>
+    </aside>
+  </main>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+  <script src="gpx_compare.js"></script>
+</body>
+</html>

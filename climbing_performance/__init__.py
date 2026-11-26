@@ -30,6 +30,14 @@ from .workflow import (
     summarise_segmented_route_performance,
     summarise_gpx_performance,
 )
+from .gpx_compare import (
+    LoadedComparisonTrack,
+    compare_segment_payload,
+    comparison_load_payload,
+    load_gpx_file,
+    load_gpx_text,
+    segment_stats,
+)
 
 __all__ = [
     "Rider",
@@ -58,4 +66,10 @@ __all__ = [
     "route_to_performance_climb",
     "summarise_segmented_route_performance",
     "summarise_gpx_performance",
+    "LoadedComparisonTrack",
+    "compare_segment_payload",
+    "comparison_load_payload",
+    "load_gpx_file",
+    "load_gpx_text",
+    "segment_stats",
 ]
