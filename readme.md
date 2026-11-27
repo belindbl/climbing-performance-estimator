@@ -1,6 +1,6 @@
 # Climbing Performance Estimator
 
-A Python project focused on interactive performance modelling, route analysis, and scenario-based simulation for cycling climbs.
+A local tool for estimating cycling performance from GPX rides, comparing efforts on the same climb, and inspecting the assumptions behind each estimate. The command-line workflow is the primary entry point; browser tools remain available for route inspection.
 
 The project was developed as a technical exploration of applied physics modelling, geospatial processing, browser-based visualisation, and analytical workflow design. Rather than functioning as a consumer training application, the repository exists primarily as a demonstration of software engineering, data processing, modelling, and interface development skills.
 
@@ -17,15 +17,31 @@ uv python install
 uv sync
 ```
 
-Run the command-line example, start the browser GUI, or run the test suite with the project's environment:
+Estimate the detected climbs in a ride. Set the rider's mass to calculate rider-specific power and watts per kilogram:
 
 ```powershell
-uv run python main.py
-uv run python tools/open_segment_gui.py
-uv run pytest
+uv run cl-perf estimate data/la_redoute.gpx --rider "Rider name" --rider-mass-kg 66
 ```
 
+Compare a climb to another GPX on the same route. The comparison is matched by GPS location; each ride only needs timestamps across the selected climb, even if the rest of its route is untimed:
+
+```powershell
+uv run cl-perf estimate data/ride.gpx --rider "Rider A" --rider-mass-kg 66 `
+  --compare data/other-ride.gpx --comparison-rider "Rider B" --comparison-rider-mass-kg 71
+```
+
+Use `--climb 2` to select one detected climb, `--start-km 4.2 --end-km 9.6` to choose an exact section, `--full-route` to analyze the whole file, or `--format json` for structured output. `uv run cl-perf estimate --help` lists all options.
+
+Power values are modelled from GPX timing and elevation with the listed rider and bike assumptions; they are not power-meter readings. Weather and wind adjustments are not included in this command.
+
 Use `uv add <package>` for runtime dependencies and `uv add --dev <package>` for development dependencies. These commands update `pyproject.toml` and `uv.lock` together.
+
+The route inspection tools can still be opened when a visual check is useful:
+
+```powershell
+uv run python tools/gpx_comp.py data/ride.gpx
+uv run python tools/open_segment_gui.py
+```
 
 ---
 
@@ -143,6 +159,7 @@ The repository follows a modular package-oriented structure.
 
 ```text
 climbing_performance/
+  cli.py                standalone ride and climb estimates
   aslp.py               altitude-adjusted performance helpers
   gpx.py                GPX parsing and route processing
   metrics.py            core analytical calculations

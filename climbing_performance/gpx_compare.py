@@ -154,22 +154,52 @@ def comparison_load_payload(payload: dict[str, Any]) -> dict[str, Any]:
 
 def compare_segment_payload(payload: dict[str, Any]) -> dict[str, Any]:
     tracks = load_tracks_from_payload(payload)
+    assumptions = payload.get("assumptions") or {}
+    return compare_loaded_segment(
+        tracks,
+        reference_index=int(payload.get("reference_index", DEFAULT_REFERENCE_INDEX)),
+        sync_mode=str(payload.get("sync_mode") or SYNC_MODE_DISTANCE),
+        start_distance_m=float(payload.get("start_distance_m", 0.0)),
+        end_distance_m=(
+            float(payload["end_distance_m"])
+            if payload.get("end_distance_m") is not None
+            else None
+        ),
+        bike_mass_kg=float(assumptions.get("bike_mass_kg", DEFAULT_BIKE_MASS_KG)),
+        cda_m2=float(assumptions.get("cda_m2", DEFAULT_CDA_M2)),
+        crr=float(assumptions.get("crr", DEFAULT_CRR)),
+        distance_step_m=float(payload.get("distance_step_m", DEFAULT_DISTANCE_STEP_M)),
+    )
+
+
+def compare_loaded_segment(
+    tracks: list[LoadedComparisonTrack],
+    *,
+    reference_index: int = DEFAULT_REFERENCE_INDEX,
+    sync_mode: str = SYNC_MODE_DISTANCE,
+    start_distance_m: float = 0.0,
+    end_distance_m: float | None = None,
+    bike_mass_kg: float = DEFAULT_BIKE_MASS_KG,
+    cda_m2: float = DEFAULT_CDA_M2,
+    crr: float = DEFAULT_CRR,
+    distance_step_m: float = DEFAULT_DISTANCE_STEP_M,
+    include_gap_samples: bool = True,
+) -> dict[str, Any]:
+    """Estimate a selected section from already parsed routes."""
     if not tracks:
         raise ValueError("At least one track is required.")
 
-    reference_index = int(payload.get("reference_index", DEFAULT_REFERENCE_INDEX))
     if reference_index < 0 or reference_index >= len(tracks):
         raise ValueError("reference_index is outside the loaded track range.")
 
-    sync_mode = str(payload.get("sync_mode") or SYNC_MODE_DISTANCE)
     if sync_mode not in SYNC_MODES:
         raise ValueError(
             f"sync_mode must be one of: {', '.join(sorted(SYNC_MODES))}."
         )
 
     reference_route = tracks[reference_index].route
-    start_distance_m = float(payload.get("start_distance_m", 0.0))
-    end_distance_m = float(payload.get("end_distance_m", reference_route.distance_m))
+    if end_distance_m is None:
+        end_distance_m = reference_route.distance_m
     if end_distance_m <= start_distance_m:
         raise ValueError("end_distance_m must be greater than start_distance_m.")
 
@@ -182,12 +212,6 @@ def compare_segment_payload(payload: dict[str, Any]) -> dict[str, Any]:
             "Selected segment exceeds the available route distance "
             f"({selection_limit_m:.1f} m)."
         )
-
-    assumptions = payload.get("assumptions") or {}
-    bike_mass_kg = float(assumptions.get("bike_mass_kg", DEFAULT_BIKE_MASS_KG))
-    cda_m2 = float(assumptions.get("cda_m2", DEFAULT_CDA_M2))
-    crr = float(assumptions.get("crr", DEFAULT_CRR))
-    distance_step_m = float(payload.get("distance_step_m", DEFAULT_DISTANCE_STEP_M))
 
     reference_stats = segment_stats(reference_route, start_distance_m, end_distance_m)
     reference_start_time = time_at_distance(reference_route, start_distance_m)
@@ -262,13 +286,17 @@ def compare_segment_payload(payload: dict[str, Any]) -> dict[str, Any]:
         },
         "reference_index": reference_index,
         "tracks": comparison_rows,
-        "gap_samples": gap_samples(
-            tracks,
-            start_distance_m,
-            end_distance_m,
-            reference_index=reference_index,
-            step_m=distance_step_m,
-            sync_mode=sync_mode,
+        "gap_samples": (
+            gap_samples(
+                tracks,
+                start_distance_m,
+                end_distance_m,
+                reference_index=reference_index,
+                step_m=distance_step_m,
+                sync_mode=sync_mode,
+            )
+            if include_gap_samples
+            else []
         ),
     }
 
@@ -513,15 +541,17 @@ def closest_route_distance_to_location(
     latitude: float,
     longitude: float,
 ) -> dict[str, float]:
-    if len(route.points) < 2:
-        raise ValueError("Route needs at least two points for location sync.")
+    if not route.segments:
+        raise ValueError("Route needs at least one connected segment for location sync.")
 
     meters_per_lat = 111_320.0
     meters_per_lon = 111_320.0 * math.cos(math.radians(latitude))
     best_distance_m = route.points[0].distance_m
     best_delta_m = float("inf")
 
-    for start, end in zip(route.points, route.points[1:]):
+    for route_segment in route.segments:
+        start = route_segment.start
+        end = route_segment.end
         ax = (start.longitude - longitude) * meters_per_lon
         ay = (start.latitude - latitude) * meters_per_lat
         bx = (end.longitude - longitude) * meters_per_lon
@@ -539,9 +569,7 @@ def closest_route_distance_to_location(
         delta_m = math.hypot(px, py)
         if delta_m < best_delta_m:
             best_delta_m = delta_m
-            best_distance_m = start.distance_m + fraction * (
-                end.distance_m - start.distance_m
-            )
+            best_distance_m = start.distance_m + fraction * route_segment.distance_m
 
     return {
         "distance_m": best_distance_m,

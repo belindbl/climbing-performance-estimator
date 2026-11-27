@@ -5,8 +5,8 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "climbing-performance"
 version = "0.1.0"
-description = "Framework for estimating climbing performance metrics in cycling"
-readme = "README.md"
+description = "Local GPX pipeline for estimating and comparing cycling climb performance"
+readme = "readme.md"
 requires-python = ">=3.12"
 dependencies = [
     "numpy",
@@ -16,6 +16,9 @@ dependencies = [
     "requests",
     "tzdata",
 ]
+
+[project.scripts]
+cl-perf = "climbing_performance.cli:main"
 
 [dependency-groups]
 dev = ["pytest"]

@@ -32,6 +32,7 @@ from .workflow import (
 )
 from .gpx_compare import (
     LoadedComparisonTrack,
+    compare_loaded_segment,
     compare_segment_payload,
     comparison_load_payload,
     load_gpx_file,
@@ -67,6 +68,7 @@ __all__ = [
     "summarise_segmented_route_performance",
     "summarise_gpx_performance",
     "LoadedComparisonTrack",
+    "compare_loaded_segment",
     "compare_segment_payload",
     "comparison_load_payload",
     "load_gpx_file",
