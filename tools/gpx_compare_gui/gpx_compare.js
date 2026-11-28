@@ -39,6 +39,9 @@ const els = {
   bikeMass: document.getElementById("bikeMass"),
   cda: document.getElementById("cda"),
   crr: document.getElementById("crr"),
+  referenceTemperature: document.getElementById("referenceTemperature"),
+  referencePressure: document.getElementById("referencePressure"),
+  referenceHumidity: document.getElementById("referenceHumidity"),
   trackList: document.getElementById("trackList"),
   resultsBody: document.getElementById("resultsBody"),
   segmentDistance: document.getElementById("segmentDistance"),
@@ -58,7 +61,7 @@ function wireEvents() {
   els.startBoundary.addEventListener("click", () => setActiveBoundary("start"));
   els.endBoundary.addEventListener("click", () => setActiveBoundary("end"));
 
-  [els.bikeMass, els.cda, els.crr].forEach(input => {
+  [els.bikeMass, els.cda, els.crr, els.referenceTemperature, els.referencePressure, els.referenceHumidity].forEach(input => {
     input.addEventListener("input", debounce(compareSelectedSegment, 250));
   });
 
@@ -147,11 +150,12 @@ async function loadSelectedFiles() {
 }
 
 async function loadTracks() {
-  const payload = await postJson(LOAD_API, { tracks: state.rawTracks });
+  const payload = await postJson(LOAD_API, { tracks: state.rawTracks, fetch_weather: true });
   dispose3dRoute();
   state.tracks = payload.tracks.map(track => ({
     ...track,
     color: track.color || TRACK_COLORS[track.index % TRACK_COLORS.length],
+    weatherSample: track.weather_sample || null,
     route: routeFromPayload(track.route)
   }));
   state.commonDistanceM = payload.common_distance_m;
@@ -184,7 +188,9 @@ async function compareSelectedSegment() {
       assumptions: {
         bike_mass_kg: readNumber(els.bikeMass),
         cda_m2: readNumber(els.cda),
-        crr: readNumber(els.crr)
+        crr: readNumber(els.crr),
+        weather_samples: state.tracks.map(track => track.weatherSample),
+        reference_weather: referenceWeatherInput()
       }
     });
   } catch (error) {
@@ -192,6 +198,20 @@ async function compareSelectedSegment() {
     showError(error.message);
   }
   render();
+}
+
+function referenceWeatherInput() {
+  if ([els.referenceTemperature, els.referencePressure, els.referenceHumidity]
+    .some(input => input.value.trim() === "")) return null;
+  const temperature = Number(els.referenceTemperature.value);
+  const pressure = Number(els.referencePressure.value);
+  const humidity = Number(els.referenceHumidity.value);
+  if (![temperature, pressure, humidity].every(Number.isFinite)) return null;
+  return {
+    temperature_c: temperature,
+    surface_pressure_hpa: pressure,
+    relative_humidity_pct: humidity
+  };
 }
 
 async function postJson(url, payload) {

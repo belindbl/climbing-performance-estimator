@@ -1,22 +1,22 @@
 const HYDRATE_API = "/api/routes/hydrate";
 const ACTIVE_SCENARIO_API = "/api/scenarios/active";
 const G = 9.81;
-const RHO0 = 1.225;
-const SCALE_HEIGHT_M = 8500;
-const STANDARD_TEMP_K = 288.15;
+const MOTORCYCLE_DRAFT_WT_CURVE = [2.1745437926, 3.2660664407, 0.8507335111];
+const MOTORCYCLE_DRAFT_CFD_RANS_CURVE = [0.8800914837, 1.2627075666, 0.4260714646];
 
 const protectionTypes = {
-  moto5: { label: "Moto 5 m", aeroMultiplier: 0.60, color: "#4f8f72" },
-  moto10: { label: "Moto 10 m", aeroMultiplier: 0.77, color: "#3d7fa3" },
-  protected: { label: "Protected", aeroMultiplier: 0.55, color: "#7a9152" },
-  low: { label: "Low protection", aeroMultiplier: 0.58, color: "#d1a23b" },
+  moto: { label: "Motorcycle draft", aeroMultiplier: 1.0, color: "#4f8f72" },
+  wheel1: { label: "1st wheel", aeroMultiplier: 0.96, color: "#d1a23b" },
+  wheel2: { label: "2nd wheel", aeroMultiplier: 0.53, color: "#7a9152" },
+  wheel3: { label: "3rd wheel", aeroMultiplier: 0.47, color: "#3d7fa3" },
+  wheel4: { label: "4th wheel", aeroMultiplier: 0.44, color: "#566b8e" },
   solo: { label: "Solo", aeroMultiplier: 1.0, color: "#b85d4d" }
 };
 
 const state = {
   route: null,
   segments: [
-    { start: 0, end: 0, type: "moto10" },
+    { start: 0, end: 0, type: "solo" },
     { start: 0, end: 0, type: "solo" }
   ],
   draggingHandle: null,
@@ -56,7 +56,11 @@ const state = {
   bikeMass: document.getElementById("bikeMass"),
   cda: document.getElementById("cda"),
   crr: document.getElementById("crr"),
+  motoGapFallback: document.getElementById("motoGapFallback"),
   temperature: document.getElementById("temperature"),
+  pressure: document.getElementById("pressure"),
+  humidity: document.getElementById("humidity"),
+  windSpeed: document.getElementById("windSpeed"),
   windDirection: document.getElementById("windDirection"),
   wkg: document.getElementById("wkg"),
   power: document.getElementById("power"),
@@ -64,6 +68,7 @@ const state = {
   gradient: document.getElementById("gradient"),
   aslpPower: document.getElementById("aslpPower"),
   aslpWkg: document.getElementById("aslpWkg"),
+  draftingPowerRange: document.getElementById("draftingPowerRange"),
   standardWkg: document.getElementById("standardWkg"),
   vam: document.getElementById("vam"),
   altitudeLoss: document.getElementById("altitudeLoss"),
@@ -98,7 +103,13 @@ function wireEvents() {
     els.riderMass,
     els.bikeMass,
     els.cda,
-    els.crr
+    els.crr,
+    els.motoGapFallback,
+    els.temperature,
+    els.pressure,
+    els.humidity,
+    els.windSpeed,
+    els.windDirection
   ]
     .forEach(input => input.addEventListener("input", render));
 
@@ -182,13 +193,8 @@ async function hydrateRoute(payload) {
 function loadRoute(payload) {
   dispose3dRoute();
   state.route = routeFromHydratedPayload(payload);
-  const soloRemaining = Math.min(865, state.route.distanceM / 2);
-  const split = Math.max(0, state.route.distanceM - soloRemaining);
-  state.segments = [
-    { start: 0, end: split, type: "moto10" },
-    { start: split, end: state.route.distanceM, type: "solo" }
-  ];
-  state.selectedBreakpointIndex = state.segments.length > 1 ? 1 : null;
+  state.segments = [{ start: 0, end: state.route.distanceM, type: "solo" }];
+  state.selectedBreakpointIndex = null;
   state.placingBreakpoint = false;
   updateRouteTitle();
   els.errorBox.textContent = "";
@@ -249,12 +255,13 @@ function updateRouteTitle() {
 
 function syncWeatherControls() {
   const sample = nearestWeatherSampleForTime(null);
-  if (!sample) {
-    els.temperature.value = els.temperature.defaultValue;
-    els.windDirection.value = els.windDirection.defaultValue;
-    return;
-  }
+  if (!sample) return;
   els.temperature.value = Number(sample.temperature_c).toFixed(1);
+  if (sample.surface_pressure_hpa != null) {
+    els.pressure.value = Number(sample.surface_pressure_hpa).toFixed(1);
+  }
+  els.humidity.value = Number(sample.relative_humidity_pct).toFixed(0);
+  els.windSpeed.value = Number(sample.wind_speed_m_s).toFixed(2);
   els.windDirection.value = normalizeDegrees(Number(sample.wind_direction_deg)).toFixed(0);
 }
 
@@ -542,6 +549,33 @@ function renderSegmentList() {
     remainingInput.addEventListener("click", event => event.stopPropagation());
     remainingLabel.appendChild(remainingInput);
 
+    if (segment.type === "moto") {
+      const draftLabel = document.createElement("label");
+      draftLabel.textContent = "Moto gap (m)";
+      const draftInput = document.createElement("input");
+      draftInput.type = "number";
+      draftInput.min = "0.1";
+      draftInput.step = "0.1";
+      draftInput.value = Number.isFinite(segment.draftDistanceM)
+        ? segment.draftDistanceM.toFixed(1)
+        : "";
+      draftInput.addEventListener("change", () => {
+        if (draftInput.value.trim() === "") {
+          segment.draftDistanceM = null;
+          render();
+          return;
+        }
+        const distanceM = Number(draftInput.value);
+        if (Number.isFinite(distanceM) && distanceM > 0) {
+          segment.draftDistanceM = distanceM;
+          render();
+        }
+      });
+      draftInput.addEventListener("click", event => event.stopPropagation());
+      draftLabel.appendChild(draftInput);
+      controls.appendChild(draftLabel);
+    }
+
     controls.appendChild(startLabel);
     controls.appendChild(remainingLabel);
     row.appendChild(controls);
@@ -560,6 +594,7 @@ function renderResults() {
       els.gradient,
       els.aslpPower,
       els.aslpWkg,
+      els.draftingPowerRange,
       els.standardWkg,
       els.vam,
       els.altitudeLoss,
@@ -580,14 +615,24 @@ function renderResults() {
     els.segmentBreakdown.innerHTML = "";
     return;
   }
-  const result = calculatePower();
+  let result;
+  try {
+    result = calculatePower();
+    clearError();
+  } catch (error) {
+    showError(error.message);
+    return;
+  }
   els.routeSummary.textContent = `${(state.route.distanceM / 1000).toFixed(2)} km, ${state.route.ascentM.toFixed(0)} m ascent, ${formatTime(state.route.durationS)}`;
   els.wkg.textContent = result.wkg.toFixed(2);
   els.power.textContent = `${result.totalPowerW.toFixed(0)} W`;
   els.aero.textContent = `${result.aeroPowerW.toFixed(0)} W`;
   els.gradient.textContent = `${result.gradientPercent.toFixed(1)} %`;
-  els.aslpPower.textContent = `${result.aslpPowerW.toFixed(0)} W`;
-  els.aslpWkg.textContent = result.aslpWkg.toFixed(2);
+  els.aslpPower.textContent = `${result.aslpPowerW.toFixed(0)} W (${result.aslpPowerLowW.toFixed(0)}–${result.aslpPowerHighW.toFixed(0)})`;
+  els.aslpWkg.textContent = `${result.aslpWkg.toFixed(2)} (${result.aslpWkgLow.toFixed(2)}–${result.aslpWkgHigh.toFixed(2)})`;
+  els.draftingPowerRange.textContent = result.hasMotoDraft
+    ? `${result.totalPowerLowW.toFixed(0)}–${result.totalPowerHighW.toFixed(0)} W`
+    : "--";
   els.standardWkg.textContent = result.standard60Wkg.toFixed(2);
   els.vam.textContent = `${result.vam.toFixed(0)} m/h`;
   els.altitudeLoss.textContent = `${result.altitudeLossPercent.toFixed(1)} %`;
@@ -651,7 +696,11 @@ function activeScenarioPayload(result) {
       bike_mass_kg: readNumber(els.bikeMass),
       cda_m2: readNumber(els.cda),
       crr: readNumber(els.crr),
+      mean_motorcycle_gap_fallback_m: optionalPositiveNumber(els.motoGapFallback),
       temperature_c: readNumber(els.temperature),
+      surface_pressure_hpa: readNumber(els.pressure),
+      relative_humidity_pct: readNumber(els.humidity),
+      wind_speed_m_s: readNumber(els.windSpeed),
       wind_direction_deg: readNumber(els.windDirection)
     },
     protection_types: protectionTypes,
@@ -662,13 +711,24 @@ function activeScenarioPayload(result) {
         label: typeInfo.label,
         start_distance_m: segment.start,
         end_distance_m: segment.end,
-        aero_multiplier: typeInfo.aeroMultiplier
+        aero_multiplier: aeroMultiplierForType(segment.type, segment.draftDistanceM),
+        motorcycle_draft_distance_m: segment.type === "moto"
+          ? effectiveMotorcycleGap(segment.draftDistanceM)
+          : null
       };
     }),
     result: result ? {
       total_power_w: result.totalPowerW,
+      total_power_low_w: result.totalPowerLowW,
+      total_power_high_w: result.totalPowerHighW,
       watts_per_kg: result.wkg,
+      estimated_power_w: result.totalPowerW,
+      sea_level_equivalent_power_w: result.aslpPowerW,
+      sea_level_equivalent_power_low_w: result.aslpPowerLowW,
+      sea_level_equivalent_power_high_w: result.aslpPowerHighW,
       aslp_w_per_kg: result.aslpWkg,
+      aslp_w_per_kg_low: result.aslpWkgLow,
+      aslp_w_per_kg_high: result.aslpWkgHigh,
       gravity_power_w: result.gravityPowerW,
       rolling_power_w: result.rollingPowerW,
       aero_power_w: result.aeroPowerW,
@@ -698,6 +758,8 @@ function calculatePower() {
   let aeroWork = 0;
   let stillAirAeroWork = 0;
   let propulsiveWork = 0;
+  let propulsiveWorkLow = 0;
+  let propulsiveWorkHigh = 0;
   let standardPropulsiveWork = 0;
   let brakingWork = 0;
   let weatherWeightedTimeS = 0;
@@ -710,6 +772,7 @@ function calculatePower() {
   const segmentStats = state.segments.map((segment, index) => ({
     index,
     type: segment.type,
+    draftDistanceM: segment.draftDistanceM,
     distanceM: segment.end - segment.start,
     ascentM: 0,
     descentM: 0,
@@ -719,30 +782,37 @@ function calculatePower() {
     rollingWorkJ: 0,
     aeroWorkJ: 0,
     propulsiveWorkJ: 0,
-    brakingWorkJ: 0
+    brakingWorkJ: 0,
+    aeroMultiplierLow: null,
+    aeroMultiplierHigh: null
   }));
 
   for (const segment of route.segments) {
     if (!segment.elapsedS || segment.elapsedS <= 0) continue;
     const roadSpeed = segment.distanceM / segment.elapsedS;
     const sample = nearestWeatherSampleForSegment(segment);
-    const temperatureC = sample ? Number(sample.temperature_c) : readNumber(els.temperature);
-    const windSpeedMS = sample ? Number(sample.wind_speed_m_s) : 0;
+    const temperatureC = sample && Number.isFinite(Number(sample.temperature_c))
+      ? Number(sample.temperature_c)
+      : requiredReferenceNumber(els.temperature, "temperature");
+    const pressureHpa = sample && Number.isFinite(Number(sample.surface_pressure_hpa))
+      ? Number(sample.surface_pressure_hpa)
+      : requiredReferenceNumber(els.pressure, "surface pressure");
+    const humidityPct = sample && Number.isFinite(Number(sample.relative_humidity_pct))
+      ? Number(sample.relative_humidity_pct)
+      : requiredReferenceNumber(els.humidity, "relative humidity");
+    const windSpeedMS = sample && Number.isFinite(Number(sample.wind_speed_m_s))
+      ? Number(sample.wind_speed_m_s)
+      : requiredReferenceNumber(els.windSpeed, "wind speed");
     const windDirectionDeg = sample
       ? normalizeDegrees(Number(sample.wind_direction_deg))
-      : normalizeDegrees(readNumber(els.windDirection));
-    const headwindMS = sample
-      ? windToComponents(windSpeedMS, windDirectionDeg, segment.bearingDeg).headwind
-      : 0;
+      : normalizeDegrees(requiredReferenceNumber(els.windDirection, "wind direction"));
+    const headwindMS = windToComponents(
+      windSpeedMS,
+      windDirectionDeg,
+      segment.bearingDeg
+    ).headwind;
     const airSpeed = Math.max(0, roadSpeed + headwindMS);
-    const segmentAltitudeM = average([
-      segment.startElevationM,
-      segment.endElevationM
-    ].filter(value => value !== null && Number.isFinite(value)));
-    const rho = airDensityAtAltitudeAndTemperature(
-      Number.isFinite(segmentAltitudeM) ? segmentAltitudeM : route.avgAltitudeM,
-      temperatureC
-    );
+    const rho = moistAirDensity(pressureHpa, temperatureC, humidityPct);
     weatherWeightedTimeS += segment.elapsedS;
     temperatureTimeSum += temperatureC * segment.elapsedS;
     windSpeedTimeSum += windSpeedMS * segment.elapsedS;
@@ -753,17 +823,33 @@ function calculatePower() {
     const slices = segmentSlices(segment);
     for (const slice of slices) {
       const fraction = slice.distanceM / segment.distanceM;
-      const typeInfo = protectionTypes[slice.type];
       const timeS = segment.elapsedS * fraction;
       const elevationChangeM = segment.elevationDeltaM * fraction;
       const ascentM = Math.max(0, elevationChangeM);
       const descentM = Math.abs(Math.min(0, elevationChangeM));
       const gravitySlice = totalMass * G * elevationChangeM;
       const rollingSlice = baseCrr * totalMass * G * slice.distanceM;
-      const aeroSlice = 0.5 * rho * cda * typeInfo.aeroMultiplier * Math.pow(airSpeed, 3) * timeS;
-      const stillAirAeroSlice = 0.5 * rho * cda * typeInfo.aeroMultiplier * Math.pow(roadSpeed, 3) * timeS;
+      const [aeroMultiplierLow, aeroMultiplierHigh] = aeroMultiplierBoundsForType(
+        slice.type,
+        slice.draftDistanceM
+      );
+      const aeroMultiplier = aeroMultiplierForType(slice.type, slice.draftDistanceM);
+      const stat = segmentStats[slice.overlayIndex];
+      if (slice.type === "moto") {
+        stat.draftDistanceM = effectiveMotorcycleGap(slice.draftDistanceM);
+        stat.aeroMultiplierLow = aeroMultiplierLow;
+        stat.aeroMultiplierHigh = aeroMultiplierHigh;
+      }
+      const aeroSlice = 0.5 * rho * cda * aeroMultiplier * Math.pow(airSpeed, 3) * timeS;
+      const aeroSliceLow = 0.5 * rho * cda * aeroMultiplierLow * Math.pow(airSpeed, 3) * timeS;
+      const aeroSliceHigh = 0.5 * rho * cda * aeroMultiplierHigh * Math.pow(airSpeed, 3) * timeS;
+      const stillAirAeroSlice = 0.5 * rho * cda * aeroMultiplier * Math.pow(roadSpeed, 3) * timeS;
       const netSliceWork = gravitySlice + rollingSlice + aeroSlice;
+      const netSliceWorkLow = gravitySlice + rollingSlice + aeroSliceLow;
+      const netSliceWorkHigh = gravitySlice + rollingSlice + aeroSliceHigh;
       const propulsiveSlice = Math.max(0, netSliceWork);
+      const propulsiveSliceLow = Math.max(0, netSliceWorkLow);
+      const propulsiveSliceHigh = Math.max(0, netSliceWorkHigh);
       const brakingSlice = Math.max(0, -netSliceWork);
       const standardGravitySlice = standardTotalMass * G * elevationChangeM;
       const standardRollingSlice = baseCrr * standardTotalMass * G * slice.distanceM;
@@ -775,10 +861,11 @@ function calculatePower() {
       aeroWork += aeroSlice;
       stillAirAeroWork += stillAirAeroSlice;
       propulsiveWork += propulsiveSlice;
+      propulsiveWorkLow += propulsiveSliceLow;
+      propulsiveWorkHigh += propulsiveSliceHigh;
       standardPropulsiveWork += standardPropulsiveSlice;
       brakingWork += brakingSlice;
 
-      const stat = segmentStats[slice.overlayIndex];
       stat.ascentM += ascentM;
       stat.descentM += descentM;
       stat.elevationChangeM += elevationChangeM;
@@ -792,9 +879,14 @@ function calculatePower() {
   }
 
   const totalPowerW = propulsiveWork / route.durationS;
+  const totalPowerLowW = propulsiveWorkLow / route.durationS;
+  const totalPowerHighW = propulsiveWorkHigh / route.durationS;
   const standard60PowerW = standardPropulsiveWork / route.durationS;
   const cpFraction = cpRemainingFractionAtAltitude(route.avgAltitudeM);
+  const [cpFractionLow, cpFractionHigh] = cpRemainingFractionRangeAtAltitude(route.avgAltitudeM);
   const aslpPowerW = totalPowerW / cpFraction;
+  const aslpPowerLowW = totalPowerLowW / cpFractionHigh;
+  const aslpPowerHighW = totalPowerHighW / cpFractionLow;
   const averageTemperatureC = weatherWeightedTimeS > 0
     ? temperatureTimeSum / weatherWeightedTimeS
     : readNumber(els.temperature);
@@ -809,9 +901,16 @@ function calculatePower() {
     : 0;
   const averageAirDensity = weatherWeightedTimeS > 0
     ? airDensityTimeSum / weatherWeightedTimeS
-    : airDensityAtAltitudeAndTemperature(route.avgAltitudeM, averageTemperatureC);
+    : moistAirDensity(
+      requiredReferenceNumber(els.pressure, "surface pressure"),
+      requiredReferenceNumber(els.temperature, "temperature"),
+      requiredReferenceNumber(els.humidity, "relative humidity")
+    );
   return {
     totalPowerW,
+    totalPowerLowW,
+    totalPowerHighW,
+    hasMotoDraft: segmentStats.some(stat => stat.type === "moto"),
     gravityPowerW: gravityWork / route.durationS,
     rollingPowerW: rollingWork / route.durationS,
     aeroPowerW: aeroWork / route.durationS,
@@ -823,7 +922,11 @@ function calculatePower() {
     gradientPercent: route.ascentM / route.distanceM * 100,
     vam: route.ascentM / (route.durationS / 3600),
     aslpPowerW,
+    aslpPowerLowW,
+    aslpPowerHighW,
     aslpWkg: aslpPowerW / riderMass,
+    aslpWkgLow: aslpPowerLowW / riderMass,
+    aslpWkgHigh: aslpPowerHighW / riderMass,
     altitudeLossPercent: (1 - cpFraction) * 100,
     airDensityKgM3: averageAirDensity,
     temperatureC: averageTemperatureC,
@@ -848,6 +951,7 @@ function nearestWeatherSampleForSegment(segment) {
 }
 
 function nearestWeatherSampleForTime(targetTime) {
+  if (!state.route || state.route.weather.status !== "available") return null;
   const samples = state.route && state.route.weather ? state.route.weather.samples : [];
   if (!samples || samples.length === 0) return null;
   if (!targetTime) return samples[0];
@@ -871,9 +975,29 @@ function windToComponents(windSpeedMS, windDirectionDeg, riderHeadingDeg) {
   };
 }
 
-function airDensityAtAltitudeAndTemperature(altitudeM, temperatureC) {
-  const altitudeDensity = RHO0 * Math.exp(-Math.max(0, altitudeM || 0) / SCALE_HEIGHT_M);
-  return altitudeDensity * (STANDARD_TEMP_K / (temperatureC + 273.15));
+function moistAirDensity(pressureHpa, temperatureC, relativeHumidityPct) {
+  if (!(pressureHpa > 0)) throw new Error("Enter a positive surface pressure in hPa.");
+  if (temperatureC <= -273.15) throw new Error("Temperature must be above absolute zero.");
+  if (relativeHumidityPct < 0 || relativeHumidityPct > 100) {
+    throw new Error("Relative humidity must be between 0 and 100%.");
+  }
+  const temperatureK = temperatureC + 273.15;
+  const saturationPressureHpa = 6.1121 * Math.exp(
+    (18.678 - temperatureC / 234.5) * (temperatureC / (257.14 + temperatureC))
+  );
+  const vaporPressurePa = saturationPressureHpa * relativeHumidityPct / 100 * 100;
+  const dryAirPressurePa = pressureHpa * 100 - vaporPressurePa;
+  if (dryAirPressurePa <= 0) throw new Error("Pressure is too low for the supplied temperature and humidity.");
+  return dryAirPressurePa / (287.05 * temperatureK)
+    + vaporPressurePa / (461.495 * temperatureK);
+}
+
+function requiredReferenceNumber(input, name) {
+  const value = Number(input.value);
+  if (input.value.trim() === "" || !Number.isFinite(value)) {
+    throw new Error(`Enter reference ${name}; API weather is unavailable.`);
+  }
+  return value;
 }
 
 function weatherLabel() {
@@ -889,7 +1013,12 @@ function segmentSlices(routeSegment) {
     const start = Math.max(routeSegment.startDistanceM, overlay.start);
     const end = Math.min(routeSegment.endDistanceM, overlay.end);
     if (end > start) {
-      slices.push({ distanceM: end - start, type: overlay.type, overlayIndex });
+      slices.push({
+        distanceM: end - start,
+        type: overlay.type,
+        draftDistanceM: overlay.draftDistanceM,
+        overlayIndex
+      });
     }
   });
   return slices;
@@ -902,11 +1031,12 @@ function renderSegmentBreakdown(segmentStats) {
     const row = document.createElement("div");
     row.className = "breakdown-row";
     row.innerHTML = `
-      <strong>${info.label} · ${meters(stat.distanceM)}</strong>
+      <strong>${info.label}${stat.type === "moto" ? ` · ${Number(stat.draftDistanceM).toFixed(1)} m gap` : ""} · ${meters(stat.distanceM)}</strong>
       <div class="breakdown-metrics">
         <span>Grade ${stat.gradientPercent.toFixed(1)}%</span>
         <span>VAM ${stat.vam.toFixed(0)}</span>
         <span>Power ${stat.totalPowerW.toFixed(0)} W</span>
+        ${stat.type === "moto" ? `<span>Aero factor ${stat.aeroMultiplierLow.toFixed(2)}–${stat.aeroMultiplierHigh.toFixed(2)}</span>` : ""}
         <span>Aero ${stat.aeroPowerW.toFixed(0)} W</span>
         <span>Elev ${stat.elevationChangeM.toFixed(0)} m</span>
         <span>Ascent ${stat.ascentM.toFixed(0)} m</span>
@@ -986,8 +1116,8 @@ function insertBreakpointAtDistance(distance, defaultType) {
   state.segments.splice(
     segmentIndex,
     1,
-    { start: segment.start, end: split, type: segment.type },
-    { start: split, end: segment.end, type: defaultType || segment.type }
+    { start: segment.start, end: split, type: segment.type, draftDistanceM: segment.draftDistanceM },
+    { start: split, end: segment.end, type: defaultType || segment.type, draftDistanceM: segment.draftDistanceM }
   );
   state.selectedBreakpointIndex = segmentIndex + 1;
   return true;
@@ -1332,6 +1462,79 @@ function cpRemainingFractionAtAltitude(avgAltitudeM) {
   return Math.max(0.5, linearInterpolate(x, x0, y0, x1, y1));
 }
 
+function cpRemainingFractionRangeAtAltitude(avgAltitudeM) {
+  const points = [
+    [0.25, 1.0, 1.0],
+    [1.25, 1 - 20.3 / 269.9, 1 - 5.6 / 269.9],
+    [2.25, 1 - 44.9 / 269.9, 1 - 24.8 / 269.9],
+    [3.25, 1 - 64.8 / 269.9, 1 - 39.9 / 269.9],
+    [4.25, 1 - 90.1 / 269.9, 1 - 59.7 / 269.9]
+  ];
+  const x = Math.max(0, avgAltitudeM) / 1000;
+  if (x <= points[0][0]) return [1, 1];
+  for (let i = 0; i < points.length - 1; i += 1) {
+    const [x0, low0, high0] = points[i];
+    const [x1, low1, high1] = points[i + 1];
+    if (x >= x0 && x <= x1) {
+      return [
+        Math.max(0.5, linearInterpolate(x, x0, low0, x1, low1)),
+        Math.min(1, linearInterpolate(x, x0, high0, x1, high1))
+      ];
+    }
+  }
+  const [x0, low0, high0] = points[points.length - 2];
+  const [x1, low1, high1] = points[points.length - 1];
+  const low = Math.max(0.5, linearInterpolate(x, x0, low0, x1, low1));
+  const high = Math.max(low, Math.min(1, linearInterpolate(x, x0, high0, x1, high1)));
+  return [low, high];
+}
+
+function motorcycleDraftAeroMultiplier(distanceM) {
+  return fittedMotorcycleCurve(distanceM, MOTORCYCLE_DRAFT_WT_CURVE);
+}
+
+function motorcycleDraftAeroMultiplierBounds(distanceM) {
+  const windTunnel = fittedMotorcycleCurve(distanceM, MOTORCYCLE_DRAFT_WT_CURVE);
+  const cfdRans = fittedMotorcycleCurve(distanceM, MOTORCYCLE_DRAFT_CFD_RANS_CURVE);
+  return [Math.min(windTunnel, cfdRans), Math.max(windTunnel, cfdRans)];
+}
+
+function fittedMotorcycleCurve(distanceM, [amplitude, offsetM, exponent]) {
+  if (!Number.isFinite(distanceM) || distanceM <= 0) {
+    throw new Error("Enter a positive motorcycle gap for each moto interval, or set a mean-gap fallback.");
+  }
+  return 1 - amplitude / Math.pow(distanceM + offsetM, exponent);
+}
+
+function effectiveMotorcycleGap(intervalDistanceM) {
+  if (Number.isFinite(intervalDistanceM) && intervalDistanceM > 0) return intervalDistanceM;
+  const fallback = optionalPositiveNumber(els.motoGapFallback);
+  if (fallback !== null) return fallback;
+  throw new Error("Enter a positive motorcycle gap for each moto interval, or set a mean-gap fallback.");
+}
+
+function optionalPositiveNumber(input) {
+  if (!input || input.value.trim() === "") return null;
+  const value = Number(input.value);
+  if (!Number.isFinite(value) || value <= 0) {
+    throw new Error("Mean motorcycle gap fallback must be a positive distance in metres.");
+  }
+  return value;
+}
+
+function aeroMultiplierBoundsForType(type, draftDistanceM) {
+  if (type === "moto") {
+    return motorcycleDraftAeroMultiplierBounds(effectiveMotorcycleGap(draftDistanceM));
+  }
+  const multiplier = protectionTypes[type].aeroMultiplier;
+  return [multiplier, multiplier];
+}
+
+function aeroMultiplierForType(type, draftDistanceM) {
+  if (type === "moto") return motorcycleDraftAeroMultiplier(effectiveMotorcycleGap(draftDistanceM));
+  return protectionTypes[type].aeroMultiplier;
+}
+
 function linearInterpolate(x, x0, y0, x1, y1) {
   if (x1 === x0) return y0;
   return y0 + (y1 - y0) * ((x - x0) / (x1 - x0));
@@ -1394,4 +1597,9 @@ function formatTime(seconds) {
 function showError(message) {
   els.errorBox.textContent = message;
   els.errorBox.style.display = "block";
+}
+
+function clearError() {
+  els.errorBox.textContent = "";
+  els.errorBox.style.display = "none";
 }

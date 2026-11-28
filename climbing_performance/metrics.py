@@ -1,6 +1,7 @@
 import math
 from climbing_performance.models import Rider, Bike, Climb
 from climbing_performance.aslp import summarise_aslp
+from climbing_performance.weather import WeatherSample
 
 def validate_positive(value: float, name: str) -> None:
     if value <= 0:
@@ -36,30 +37,47 @@ def compute_vertical_speed(elevation_gain_m: float, time_s: float) -> float:
     return elevation_gain_m / time_s  # m/s
 
 def air_density_from_weather(
-    altitude_m: float,
     temperature_c: float,
     pressure_hpa: float,
+    relative_humidity_pct: float,
 ) -> float:
     """
-    Compute air density using the ideal gas law.
+    Compute moist-air density from surface pressure, temperature and humidity.
 
     Parameters:
-    - altitude_m: altitude (for validation only here)
     - temperature_c: temperature in °C
     - pressure_hpa: pressure in hPa
+    - relative_humidity_pct: relative humidity from 0 to 100
 
     Returns:
     - air density in kg/m³
     """
-    if altitude_m < 0:
-        altitude_m = 0.0
-
     temperature_k = temperature_c + 273.15
     pressure_pa = pressure_hpa * 100.0
+    if temperature_k <= 0.0:
+        raise ValueError("temperature_c must be above absolute zero.")
+    validate_positive(pressure_hpa, "pressure_hpa")
+    if not 0.0 <= relative_humidity_pct <= 100.0:
+        raise ValueError("relative_humidity_pct must be between 0 and 100.")
 
-    R = 287.05  # J/(kg·K) for dry air
+    # Buck equation for saturation vapor pressure over liquid water.
+    saturation_pressure_hpa = 6.1121 * math.exp(
+        (18.678 - temperature_c / 234.5)
+        * (temperature_c / (257.14 + temperature_c))
+    )
+    vapor_pressure_pa = (
+        saturation_pressure_hpa * relative_humidity_pct / 100.0 * 100.0
+    )
+    dry_air_pressure_pa = pressure_pa - vapor_pressure_pa
+    if dry_air_pressure_pa <= 0.0:
+        raise ValueError("pressure_hpa is too low for the supplied temperature and humidity.")
 
-    return pressure_pa / (R * temperature_k)
+    dry_air_gas_constant = 287.05
+    water_vapor_gas_constant = 461.495
+    return (
+        dry_air_pressure_pa / (dry_air_gas_constant * temperature_k)
+        + vapor_pressure_pa / (water_vapor_gas_constant * temperature_k)
+    )
 
 def air_density_at_altitude(avg_altitude_m: float) -> float:
     if avg_altitude_m < 0:
@@ -86,6 +104,7 @@ def estimate_power_components(
     *,
     headwind_m_s: float = 0.0,
     air_density_kg_m3: float | None = None,
+    reference_weather: WeatherSample | None = None,
 ) -> dict:
     validate_positive(rider.mass_kg, "rider.mass_kg")
     validate_positive(bike.mass_kg, "bike.mass_kg")
@@ -105,7 +124,16 @@ def estimate_power_components(
 
     rho = air_density_kg_m3
     if rho is None:
-        rho = air_density_at_altitude(climb.avg_altitude_m)
+        if reference_weather is None or reference_weather.surface_pressure_hpa is None:
+            raise ValueError(
+                "Air density requires air_density_kg_m3 or reference weather "
+                "with surface pressure."
+            )
+        rho = air_density_from_weather(
+            temperature_c=reference_weather.temperature_c,
+            pressure_hpa=reference_weather.surface_pressure_hpa,
+            relative_humidity_pct=reference_weather.relative_humidity_pct,
+        )
     validate_positive(rho, "air_density_kg_m3")
 
     cda = bike.drag_coefficient * bike.frontal_area_m2
@@ -136,6 +164,7 @@ def summarise_climb_performance(
     *,
     headwind_m_s: float = 0.0,
     air_density_kg_m3: float | None = None,
+    reference_weather: WeatherSample | None = None,
 ) -> dict:
     gradient_percent = compute_gradient(climb.elevation_gain_m, climb.distance_m)
     vam_m_per_h = compute_vam(climb.elevation_gain_m, climb.time_s)
@@ -148,6 +177,7 @@ def summarise_climb_performance(
         climb,
         headwind_m_s=headwind_m_s,
         air_density_kg_m3=air_density_kg_m3,
+        reference_weather=reference_weather,
     )
     wkg = estimate_watts_per_kg(power["total_power_w"], rider)
 
@@ -167,6 +197,7 @@ def summarise_full_performance(
     *,
     headwind_m_s: float = 0.0,
     air_density_kg_m3: float | None = None,
+    reference_weather: WeatherSample | None = None,
 ) -> dict:
     climb_summary = summarise_climb_performance(
         rider,
@@ -174,9 +205,10 @@ def summarise_full_performance(
         climb,
         headwind_m_s=headwind_m_s,
         air_density_kg_m3=air_density_kg_m3,
+        reference_weather=reference_weather,
     )
     aslp_summary = summarise_aslp(
-        observed_power_w=climb_summary["total_power_w"],
+        estimated_power_w=climb_summary["total_power_w"],
         rider_mass_kg=rider.mass_kg,
         avg_altitude_m=climb.avg_altitude_m,
     )

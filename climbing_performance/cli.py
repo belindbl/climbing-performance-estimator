@@ -17,6 +17,9 @@ from climbing_performance.gpx_compare import (
     compare_loaded_segment,
     load_gpx_file,
 )
+from climbing_performance.metrics import air_density_from_weather
+from climbing_performance.weather import WeatherAPIError
+from climbing_performance.workflow import fetch_route_weather_context
 
 
 @dataclass(frozen=True)
@@ -93,6 +96,9 @@ def build_parser() -> argparse.ArgumentParser:
         default=DEFAULT_CRR,
         help=f"rolling resistance coefficient (default: {DEFAULT_CRR:g})",
     )
+    estimate.add_argument("--reference-temperature-c", type=float)
+    estimate.add_argument("--reference-pressure-hpa", type=positive_float)
+    estimate.add_argument("--reference-humidity-pct", type=percent_float)
     estimate.add_argument(
         "--format",
         choices=("text", "json"),
@@ -146,6 +152,51 @@ def estimate(args: argparse.Namespace) -> dict[str, Any]:
             )
         )
 
+    reference_values = (
+        args.reference_temperature_c,
+        args.reference_pressure_hpa,
+        args.reference_humidity_pct,
+    )
+    if any(value is not None for value in reference_values) and not all(
+        value is not None for value in reference_values
+    ):
+        raise ValueError(
+            "--reference-temperature-c, --reference-pressure-hpa, and "
+            "--reference-humidity-pct must be supplied together."
+        )
+    reference_density = (
+        air_density_from_weather(
+            temperature_c=args.reference_temperature_c,
+            pressure_hpa=args.reference_pressure_hpa,
+            relative_humidity_pct=args.reference_humidity_pct,
+        )
+        if all(value is not None for value in reference_values)
+        else None
+    )
+    air_densities = []
+    density_sources = []
+    for track in tracks:
+        try:
+            sample = fetch_route_weather_context(track.route).sample
+            if sample.surface_pressure_hpa is None:
+                raise WeatherAPIError("API weather sample lacks surface pressure.")
+            density = air_density_from_weather(
+                temperature_c=sample.temperature_c,
+                pressure_hpa=sample.surface_pressure_hpa,
+                relative_humidity_pct=sample.relative_humidity_pct,
+            )
+            density_sources.append("Open-Meteo")
+        except (WeatherAPIError, ValueError, OSError):
+            if reference_density is None:
+                raise ValueError(
+                    "API weather unavailable for air density. Supply all three "
+                    "--reference-temperature-c, --reference-pressure-hpa, and "
+                    "--reference-humidity-pct options."
+                )
+            density = reference_density
+            density_sources.append("reference weather input")
+        air_densities.append(density)
+
     sections = select_sections(primary.route, args)
     results = []
     for section in sections:
@@ -158,6 +209,7 @@ def estimate(args: argparse.Namespace) -> dict[str, Any]:
             bike_mass_kg=args.bike_mass_kg,
             cda_m2=args.cda_m2,
             crr=args.crr,
+            air_density_kg_m3_by_track=air_densities,
             include_gap_samples=False,
         )
         results.append(
@@ -186,6 +238,8 @@ def estimate(args: argparse.Namespace) -> dict[str, Any]:
             "cda_m2": args.cda_m2,
             "crr": args.crr,
             "weather_adjustment": False,
+            "air_density_kg_m3_by_track": air_densities,
+            "air_density_source_by_track": density_sources,
         },
         "sections": results,
     }
@@ -248,7 +302,8 @@ def print_report(report: dict[str, Any]) -> None:
         "Model: "
         f"bike {assumptions['bike_mass_kg']:.1f} kg, "
         f"CdA {assumptions['cda_m2']:.2f} m², "
-        f"Crr {assumptions['crr']:.4f}; weather not included"
+        f"Crr {assumptions['crr']:.4f}; wind adjustment not included; "
+        "air density uses API or reference weather"
     )
     if report["comparison_ride"] is not None:
         comparison = report["comparison_ride"]
@@ -337,6 +392,13 @@ def positive_int(value: str) -> int:
     number = int(value)
     if number <= 0:
         raise argparse.ArgumentTypeError("must be greater than zero")
+    return number
+
+
+def percent_float(value: str) -> float:
+    number = float(value)
+    if not math.isfinite(number) or not 0.0 <= number <= 100.0:
+        raise argparse.ArgumentTypeError("must be between 0 and 100")
     return number
 
 

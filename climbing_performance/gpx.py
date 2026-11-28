@@ -167,9 +167,74 @@ def parse_gpx(path: str | Path) -> GPXRoute:
     if len(points) < 2:
         raise ValueError("GPX file must contain at least two track points.")
 
+    points = _interpolate_internal_missing_times(points)
     segments = build_route_segments(points)
 
     return GPXRoute(points=points, segments=segments, name=_extract_route_name(root))
+
+
+def _interpolate_internal_missing_times(points: list[TrackPoint]) -> list[TrackPoint]:
+    """Fill timestamp gaps between timed points in the same GPX track segment.
+
+    Missing point times are distributed by distance at the mean speed measured
+    between the nearest timed points on either side. Leading and trailing gaps,
+    and gaps without positive elapsed time or distance, remain unset.
+    """
+    updated = list(points)
+    index = 0
+
+    while index < len(points):
+        if points[index].time is not None:
+            index += 1
+            continue
+
+        gap_start = index
+        segment_index = points[index].segment_index
+        while (
+            index < len(points)
+            and points[index].time is None
+            and points[index].segment_index == segment_index
+        ):
+            index += 1
+        gap_end = index
+
+        left_index = gap_start - 1
+        right_index = gap_end
+        if (
+            left_index < 0
+            or right_index >= len(points)
+            or points[left_index].segment_index != segment_index
+            or points[right_index].segment_index != segment_index
+        ):
+            continue
+
+        left = points[left_index]
+        right = points[right_index]
+        if left.time is None or right.time is None:
+            continue
+
+        elapsed_s = (right.time - left.time).total_seconds()
+        distance_m = right.distance_m - left.distance_m
+        if elapsed_s <= 0.0 or distance_m <= 0.0:
+            continue
+
+        mean_speed_m_s = distance_m / elapsed_s
+        for missing_index in range(gap_start, gap_end):
+            partial_distance_m = points[missing_index].distance_m - left.distance_m
+            estimated_time = left.time + timedelta(
+                seconds=partial_distance_m / mean_speed_m_s
+            )
+            point = points[missing_index]
+            updated[missing_index] = TrackPoint(
+                latitude=point.latitude,
+                longitude=point.longitude,
+                elevation_m=point.elevation_m,
+                time=estimated_time,
+                segment_index=point.segment_index,
+                distance_m=point.distance_m,
+            )
+
+    return updated
 
 def dem_anchor_samples(route: GPXRoute, every_n: int = 30,) -> dict[datetime, TrackPoint]:
     return {

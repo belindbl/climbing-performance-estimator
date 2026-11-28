@@ -10,7 +10,13 @@ from typing import Any
 
 from climbing_performance.aslp import summarise_aslp
 from climbing_performance.gpx import GPXRoute, TrackPoint, parse_gpx
-from climbing_performance.metrics import air_density_at_altitude
+from climbing_performance.metrics import air_density_from_weather
+from climbing_performance.route_hydration import (
+    weather_sample_from_payload,
+    weather_sample_payload,
+)
+from climbing_performance.weather import WeatherAPIError, WeatherSample
+from climbing_performance.workflow import fetch_route_weather_context
 from climbing_performance.route_hydration import clean_route_name, route_payload
 
 
@@ -133,6 +139,7 @@ def load_tracks_from_payload(payload: dict[str, Any]) -> list[LoadedComparisonTr
 
 def comparison_load_payload(payload: dict[str, Any]) -> dict[str, Any]:
     tracks = load_tracks_from_payload(payload)
+    fetch_weather = bool(payload.get("fetch_weather", False))
     min_distance_m = min(track.route.distance_m for track in tracks)
     max_distance_m = max(track.route.distance_m for track in tracks)
 
@@ -144,6 +151,9 @@ def comparison_load_payload(payload: dict[str, Any]) -> dict[str, Any]:
                 "rider_mass_kg": track.rider_mass_kg,
                 "color": track.color,
                 "route": route_payload(track.route, fallback_name=track.name),
+                "weather_sample": (
+                    _route_weather_payload(track.route) if fetch_weather else None
+                ),
             }
             for index, track in enumerate(tracks)
         ],
@@ -155,6 +165,7 @@ def comparison_load_payload(payload: dict[str, Any]) -> dict[str, Any]:
 def compare_segment_payload(payload: dict[str, Any]) -> dict[str, Any]:
     tracks = load_tracks_from_payload(payload)
     assumptions = payload.get("assumptions") or {}
+    air_densities = _air_densities_from_assumptions(assumptions, len(tracks))
     return compare_loaded_segment(
         tracks,
         reference_index=int(payload.get("reference_index", DEFAULT_REFERENCE_INDEX)),
@@ -168,6 +179,7 @@ def compare_segment_payload(payload: dict[str, Any]) -> dict[str, Any]:
         bike_mass_kg=float(assumptions.get("bike_mass_kg", DEFAULT_BIKE_MASS_KG)),
         cda_m2=float(assumptions.get("cda_m2", DEFAULT_CDA_M2)),
         crr=float(assumptions.get("crr", DEFAULT_CRR)),
+        air_density_kg_m3_by_track=air_densities,
         distance_step_m=float(payload.get("distance_step_m", DEFAULT_DISTANCE_STEP_M)),
     )
 
@@ -182,12 +194,16 @@ def compare_loaded_segment(
     bike_mass_kg: float = DEFAULT_BIKE_MASS_KG,
     cda_m2: float = DEFAULT_CDA_M2,
     crr: float = DEFAULT_CRR,
+    air_density_kg_m3_by_track: list[float | None] | None = None,
     distance_step_m: float = DEFAULT_DISTANCE_STEP_M,
     include_gap_samples: bool = True,
 ) -> dict[str, Any]:
     """Estimate a selected section from already parsed routes."""
     if not tracks:
         raise ValueError("At least one track is required.")
+
+    if air_density_kg_m3_by_track is None or len(air_density_kg_m3_by_track) != len(tracks):
+        raise ValueError("Reference weather or API air density is required for every track.")
 
     if reference_index < 0 or reference_index >= len(tracks):
         raise ValueError("reference_index is outside the loaded track range.")
@@ -237,6 +253,7 @@ def compare_loaded_segment(
             bike_mass_kg=bike_mass_kg,
             cda_m2=cda_m2,
             crr=crr,
+            air_density_kg_m3=air_density_kg_m3_by_track[index],
         )
         start_time = time_at_distance(track.route, mapping.start_distance_m)
         end_time = time_at_distance(track.route, mapping.end_distance_m)
@@ -390,6 +407,7 @@ def estimate_segment_power(
     bike_mass_kg: float = DEFAULT_BIKE_MASS_KG,
     cda_m2: float = DEFAULT_CDA_M2,
     crr: float = DEFAULT_CRR,
+    air_density_kg_m3: float | None = None,
     standard_rider_mass_kg: float = DEFAULT_RIDER_MASS_KG,
 ) -> dict[str, float | None]:
     if stats.elapsed_s is None or stats.elapsed_s <= 0.0:
@@ -399,11 +417,17 @@ def estimate_segment_power(
             "standard_60kg_power_w": None,
             "standard_60kg_w_per_kg": None,
             "sea_level_equivalent_power_w": None,
+            "sea_level_equivalent_power_low_w": None,
+            "sea_level_equivalent_power_high_w": None,
             "aslp_w_per_kg": None,
+            "aslp_w_per_kg_low": None,
+            "aslp_w_per_kg_high": None,
         }
 
     v_road = stats.distance_m / stats.elapsed_s
-    rho = air_density_at_altitude(stats.avg_altitude_m)
+    if air_density_kg_m3 is None or air_density_kg_m3 <= 0.0:
+        raise ValueError("A positive weather-derived air density is required.")
+    rho = air_density_kg_m3
 
     total_power = _power_for_mass(
         rider_mass_kg=rider_mass_kg,
@@ -435,13 +459,73 @@ def estimate_segment_power(
         "standard_60kg_power_w": standard_power,
         "standard_60kg_w_per_kg": standard_power / standard_rider_mass_kg,
         "sea_level_equivalent_power_w": aslp["sea_level_equivalent_power_w"],
+        "sea_level_equivalent_power_low_w": aslp["sea_level_equivalent_power_low_w"],
+        "sea_level_equivalent_power_high_w": aslp["sea_level_equivalent_power_high_w"],
         "aslp_w_per_kg": aslp["aslp_w_per_kg"],
+        "aslp_w_per_kg_low": aslp["aslp_w_per_kg_low"],
+        "aslp_w_per_kg_high": aslp["aslp_w_per_kg_high"],
         "air_density_kg_m3": rho,
         "road_speed_m_per_s": v_road,
         "gravity_power_w": (rider_mass_kg + bike_mass_kg) * G * stats.ascent_m / stats.elapsed_s,
         "rolling_power_w": crr * (rider_mass_kg + bike_mass_kg) * G * stats.distance_m / stats.elapsed_s,
         "aero_power_w": 0.5 * rho * cda_m2 * v_road**3,
     }
+
+
+def _route_weather_payload(route: GPXRoute) -> dict[str, Any] | None:
+    try:
+        context = fetch_route_weather_context(route)
+    except (WeatherAPIError, ValueError, OSError):
+        return None
+    if context.sample.surface_pressure_hpa is None:
+        return None
+    return weather_sample_payload(context.sample)
+
+
+def _air_densities_from_assumptions(
+    assumptions: dict[str, Any],
+    track_count: int,
+) -> list[float | None]:
+    samples_payload = assumptions.get("weather_samples") or []
+    reference = assumptions.get("reference_weather") or {}
+    has_reference = all(
+        reference.get(name) is not None
+        for name in (
+            "temperature_c",
+            "surface_pressure_hpa",
+            "relative_humidity_pct",
+        )
+    )
+    reference_density = (
+        air_density_from_weather(
+            temperature_c=float(reference["temperature_c"]),
+            pressure_hpa=float(reference["surface_pressure_hpa"]),
+            relative_humidity_pct=float(reference["relative_humidity_pct"]),
+        )
+        if has_reference
+        else None
+    )
+
+    densities: list[float | None] = []
+    for index in range(track_count):
+        sample_payload = samples_payload[index] if index < len(samples_payload) else None
+        if sample_payload and sample_payload.get("surface_pressure_hpa") is not None:
+            sample: WeatherSample = weather_sample_from_payload(sample_payload)
+            densities.append(
+                air_density_from_weather(
+                    temperature_c=sample.temperature_c,
+                    pressure_hpa=sample.surface_pressure_hpa,
+                    relative_humidity_pct=sample.relative_humidity_pct,
+                )
+            )
+        else:
+            densities.append(reference_density)
+    if any(density is None for density in densities):
+        raise ValueError(
+            "API weather is unavailable for one or more tracks. Enter reference "
+            "temperature, surface pressure, and humidity to estimate air density."
+        )
+    return densities
 
 
 def _power_for_mass(

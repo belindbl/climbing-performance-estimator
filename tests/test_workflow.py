@@ -8,8 +8,10 @@ from climbing_performance.weather import WeatherSample
 from climbing_performance.workflow import (
     RouteSegmentAdjustment,
     motorcycle_draft_aero_multiplier,
+    motorcycle_draft_aero_multiplier_bounds,
     route_to_performance_climb,
     summarise_gpx_performance,
+    whole_segment_motorcycle_draft_adjustment,
 )
 from climbing_performance.gpx import parse_gpx
 
@@ -36,6 +38,7 @@ def fake_weather_fetcher(
             wind_speed_m_s=3.28,
             wind_direction_deg=21.0,
             wind_gusts_m_s=7.6,
+            surface_pressure_hpa=1010.0,
         )
     ]
 
@@ -93,19 +96,17 @@ def test_summarise_gpx_performance_can_apply_explicit_wind_exposure():
     assert summary["wind_exposure_factor"] == pytest.approx(1.0)
 
 
-def test_summarise_gpx_performance_can_run_without_weather():
+def test_summarise_gpx_performance_requires_reference_weather_when_api_disabled():
     rider = Rider.default()
     bike = Bike.default()
 
-    summary = summarise_gpx_performance(
-        LA_REDOUTE_GPX,
-        rider,
-        bike,
-        include_weather=False,
-    )
-
-    assert summary["headwind_m_s"] == pytest.approx(0.0)
-    assert "weather_sample_time" not in summary
+    with pytest.raises(ValueError, match="Weather is required for air density"):
+        summarise_gpx_performance(
+            LA_REDOUTE_GPX,
+            rider,
+            bike,
+            include_weather=False,
+        )
 
 
 def test_summarise_gpx_performance_supports_drafting_breakpoint():
@@ -128,18 +129,21 @@ def test_summarise_gpx_performance_supports_drafting_breakpoint():
             aero_multiplier=1.0,
         ),
     ]
+    reference_weather = fake_weather_fetcher(50.4889, 5.7075, "2026-04-26", "2026-04-26")[0]
 
     unadjusted = summarise_gpx_performance(
         LA_REDOUTE_GPX,
         rider,
         bike,
         include_weather=False,
+        reference_weather=reference_weather,
     )
     adjusted = summarise_gpx_performance(
         LA_REDOUTE_GPX,
         rider,
         bike,
         include_weather=False,
+        reference_weather=reference_weather,
         segment_adjustments=adjustments,
     )
 
@@ -152,10 +156,40 @@ def test_summarise_gpx_performance_supports_drafting_breakpoint():
     )
 
 
-def test_motorcycle_draft_aero_multiplier_interpolates_published_drag_fractions():
-    assert motorcycle_draft_aero_multiplier(2.64) == pytest.approx(0.52)
-    assert motorcycle_draft_aero_multiplier(10.0) == pytest.approx(0.77)
-    assert motorcycle_draft_aero_multiplier(7.5) == pytest.approx(0.6850815217)
+def test_motorcycle_draft_curves_fit_reported_wind_tunnel_and_cfd_ranges():
+    expected_wind_tunnel = {
+        2.64: 0.5200,
+        10.0: 0.7589,
+        30.0: 0.8897,
+        50.0: 0.9261,
+    }
+    expected_ranges = {
+        2.64: (0.5073, 0.5200),
+        10.0: (0.6863, 0.7589),
+        30.0: (0.7970, 0.8897),
+        50.0: (0.8356, 0.9261),
+    }
+    for distance, expected in expected_wind_tunnel.items():
+        assert motorcycle_draft_aero_multiplier(distance) == pytest.approx(expected, abs=0.001)
+        lower, upper = motorcycle_draft_aero_multiplier_bounds(distance)
+        assert (lower, upper) == pytest.approx(expected_ranges[distance], abs=0.001)
+        assert lower <= motorcycle_draft_aero_multiplier(distance) <= upper
+
+    assert motorcycle_draft_aero_multiplier(100.0) > motorcycle_draft_aero_multiplier(50.0)
+    assert motorcycle_draft_aero_multiplier(100.0) < 1.0
+
+
+def test_motorcycle_mean_gap_fallback_covers_the_full_route():
+    adjustment = whole_segment_motorcycle_draft_adjustment(
+        2400.0,
+        mean_separation_m=18.0,
+    )
+    assert adjustment.start_distance_m == 0.0
+    assert adjustment.end_distance_m == 2400.0
+    assert adjustment.motorcycle_draft_distance_m == 18.0
+    assert adjustment.aero_multiplier == pytest.approx(
+        motorcycle_draft_aero_multiplier(18.0)
+    )
 
 
 def test_motorcycle_draft_reduces_modeled_power():
@@ -178,20 +212,30 @@ def test_motorcycle_draft_reduces_modeled_power():
             aero_multiplier=1.0,
         ),
     ]
+    reference_weather = fake_weather_fetcher(50.4889, 5.7075, "2026-04-26", "2026-04-26")[0]
 
     solo = summarise_gpx_performance(
         LA_REDOUTE_GPX,
         rider,
         bike,
         include_weather=False,
+        reference_weather=reference_weather,
     )
     moto = summarise_gpx_performance(
         LA_REDOUTE_GPX,
         rider,
         bike,
         include_weather=False,
+        reference_weather=reference_weather,
         segment_adjustments=adjustments,
     )
 
     assert moto["total_power_w"] < solo["total_power_w"]
+    assert moto["total_power_low_w"] <= moto["total_power_w"] <= moto["total_power_high_w"]
+    assert moto["sea_level_equivalent_power_low_w"] == pytest.approx(
+        moto["total_power_low_w"] / moto["cp_remaining_fraction_high"]
+    )
+    assert moto["sea_level_equivalent_power_high_w"] == pytest.approx(
+        moto["total_power_high_w"] / moto["cp_remaining_fraction_low"]
+    )
     assert moto["segment_adjustments"]["moto_7_5m"]["aero_power_w"] > 0.0

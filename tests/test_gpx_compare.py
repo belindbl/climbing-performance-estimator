@@ -100,7 +100,16 @@ def test_compare_segment_payload_reports_relative_gaps_and_power():
             "start_distance_m": 0,
             "end_distance_m": common_distance,
             "distance_step_m": common_distance,
-            "assumptions": {"bike_mass_kg": 8, "cda_m2": 0.33, "crr": 0.004},
+            "assumptions": {
+                "bike_mass_kg": 8,
+                "cda_m2": 0.33,
+                "crr": 0.004,
+                "reference_weather": {
+                    "temperature_c": 15.0,
+                    "surface_pressure_hpa": 1013.25,
+                    "relative_humidity_pct": 50.0,
+                },
+            },
         }
     )
 
@@ -142,6 +151,11 @@ def test_location_sync_maps_reference_locations_to_each_track_route():
             "start_distance_m": 0,
             "end_distance_m": common_distance,
             "sync_mode": "distance",
+            "assumptions": {"reference_weather": {
+                "temperature_c": 15.0,
+                "surface_pressure_hpa": 1013.25,
+                "relative_humidity_pct": 50.0,
+            }},
         }
     )
     location_result = compare_segment_payload(
@@ -158,6 +172,11 @@ def test_location_sync_maps_reference_locations_to_each_track_route():
             "start_distance_m": 0,
             "end_distance_m": common_distance,
             "sync_mode": "location",
+            "assumptions": {"reference_weather": {
+                "temperature_c": 15.0,
+                "surface_pressure_hpa": 1013.25,
+                "relative_humidity_pct": 50.0,
+            }},
         }
     )
 

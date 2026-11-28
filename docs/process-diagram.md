@@ -6,22 +6,20 @@ flowchart TD
     User --> Notebooks[notebooks/*.ipynb]
 
     Main --> Models[models.py<br/>Rider, Bike, Climb]
-    Main --> FullSummary[metrics.summarise_full_performance]
+    Main --> RouteEstimate[workflow.summarise_gpx_performance]
+    RouteEstimate --> SegmentWork[workflow.summarise_segmented_route_performance]
+    SegmentWork --> BasicMetrics[Gradient, VAM,<br/>road speed, vertical speed]
+    SegmentWork --> Gravity[Gravity work]
+    SegmentWork --> Rolling[Rolling work]
+    SegmentWork --> Aero[Aerodynamic work<br/>with headwind per segment]
+    SegmentWork --> Total[Total modeled power]
+    SegmentWork --> Wkg[Watts per kg]
 
-    FullSummary --> ClimbSummary[metrics.summarise_climb_performance]
-    ClimbSummary --> BasicMetrics[Gradient, VAM,<br/>road speed, vertical speed]
-    ClimbSummary --> Power[estimate_power_components]
-    Power --> Gravity[Gravity power]
-    Power --> Rolling[Rolling power]
-    Power --> Aero[Aero power]
-    Power --> Total[Total power]
-    ClimbSummary --> Wkg[Watts per kg]
-
-    FullSummary --> ASLP[aslp.summarise_aslp]
+    SegmentWork --> ASLP[aslp.summarise_aslp]
     ASLP --> CPFraction[CP remaining fraction<br/>at altitude]
-    ASLP --> AltLoss[Altitude power loss]
-    ASLP --> SeaLevel[Sea-level equivalent power]
-    ASLP --> ASLPWkg[aSLP W/kg]
+    CPFraction --> AltLoss[Estimated altitude power loss]
+    CPFraction --> SeaLevel[Sea-level equivalent estimated power<br/>with approximate range]
+    SeaLevel --> ASLPWkg[aSLP W/kg<br/>with approximate range]
 
     BasicMetrics --> Summary[Performance summary dict]
     Gravity --> Summary
@@ -30,6 +28,7 @@ flowchart TD
     Total --> Summary
     Wkg --> Summary
     CPFraction --> Summary
+    AltLoss --> Summary
     AltLoss --> Summary
     SeaLevel --> Summary
     ASLPWkg --> Summary

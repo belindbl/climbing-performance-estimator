@@ -39,15 +39,16 @@
       </div>
       <div class="stats">
         <div class="stat"><span>W/kg</span><strong id="wkg">--</strong></div>
-        <div class="stat"><span>Total Power</span><strong id="power">--</strong></div>
+        <div class="stat"><span>Estimated power</span><strong id="power">--</strong></div>
         <div class="stat"><span>Aero Power</span><strong id="aero">--</strong></div>
         <div class="stat"><span>Gradient</span><strong id="gradient">--</strong></div>
       </div>
       <details class="advanced" open>
         <summary>Advanced</summary>
         <div class="advanced-grid">
-          <div class="readout"><span>aSLP</span><strong id="aslpPower">--</strong></div>
-          <div class="readout"><span>aSLP W/kg</span><strong id="aslpWkg">--</strong></div>
+          <div class="readout"><span>aSLP estimated power (approx. range)</span><strong id="aslpPower">--</strong></div>
+          <div class="readout"><span>aSLP W/kg (approx. range)</span><strong id="aslpWkg">--</strong></div>
+          <div class="readout"><span>Power range (CFD–WT moto curves)</span><strong id="draftingPowerRange">--</strong></div>
           <div class="readout"><span>Et. 60 kg W/kg</span><strong id="standardWkg">--</strong></div>
           <div class="readout"><span>VAM</span><strong id="vam">--</strong></div>
           <div class="readout"><span>Altitude loss</span><strong id="altitudeLoss">--</strong></div>
@@ -75,12 +76,17 @@
         <label>Bike weight (kg)<input id="bikeMass" type="number" min="1" step="0.1" value="8"></label>
         <label>CdA (m2)<input id="cda" type="number" min="0" step="0.01" value="0.33"></label>
         <label>Crr<input id="crr" type="number" min="0" step="0.0005" value="0.004"></label>
-        <label>Avg temp C<input id="temperature" type="number" step="0.1" value="15.4" readonly></label>
-        <label>Avg wind deg<input id="windDirection" type="number" min="0" max="360" step="1" value="21" readonly></label>
+        <label>Mean moto gap fallback (m)<input id="motoGapFallback" type="number" min="0.1" step="0.1" value=""></label>
+        <label>Reference temp (°C)<input id="temperature" type="number" step="0.1" value=""></label>
+        <label>Surface pressure (hPa)<input id="pressure" type="number" min="1" step="0.1" value=""></label>
+        <label>Relative humidity (%)<input id="humidity" type="number" min="0" max="100" step="1" value=""></label>
+        <label>Wind speed (m/s)<input id="windSpeed" type="number" min="0" step="0.1" value=""></label>
+        <label>Wind direction (°)<input id="windDirection" type="number" min="0" max="360" step="1" value=""></label>
+        <div class="subtle">API weather fills these values when available. Otherwise enter reference conditions; estimates require temperature, pressure, humidity, and wind.</div>
       </div>
       <div class="sidebar-section">
         <h2>Segments</h2>
-        <div class="subtle">Drag handles on the profile or edit segment type here.</div>
+        <div class="subtle">Choose the rider's wheel position for cyclist pacelines, or enter motorcycle gaps by interval. The mean gap is used for moto intervals without a specific distance. Wheel factors use a four-rider uphill study and are approximate outside its tested conditions.</div>
       </div>
       <div class="segment-list" id="segmentList"></div>
       <div class="segment-breakdown" id="segmentBreakdown"></div>

@@ -32,7 +32,15 @@ uv run cl-perf estimate data/ride.gpx --rider "Rider A" --rider-mass-kg 66 `
 
 Use `--climb 2` to select one detected climb, `--start-km 4.2 --end-km 9.6` to choose an exact section, `--full-route` to analyze the whole file, or `--format json` for structured output. `uv run cl-perf estimate --help` lists all options.
 
-Power values are modelled from GPX timing and elevation with the listed rider and bike assumptions; they are not power-meter readings. Weather and wind adjustments are not included in this command.
+Power values are estimated from GPX timing and elevation with the listed rider and bike assumptions; they are not power-meter readings. The CLI comparison estimator fetches temperature, surface pressure, and humidity for air density when timestamped route data permits. If API weather is unavailable, pass all three reference options: `--reference-temperature-c`, `--reference-pressure-hpa`, and `--reference-humidity-pct`. Wind effects are not included in the CLI comparison estimate.
+
+### GPX modeling path and assumptions
+
+The GPX workflow uses one segment-work estimator for both ordinary routes and routes with user-defined adjustments. It calculates gravity, rolling-resistance, and aerodynamic work across timed route segments, then divides by total elapsed time. Without adjustments, each route segment uses the rider's base bike assumptions.
+
+Air density in the GPX workflow is calculated from weather sample temperature, surface pressure, and relative humidity. API weather is preferred; if unavailable, provide a complete `WeatherSample` through the workflow's `reference_weather` argument. The workflow API accepts `headwind_m_s` as a constant wind component applied to every route segment; positive values are headwinds, negative values are tailwinds, and `0` adds no direct wind effect. API-derived wind is calculated per segment heading and scaled by `wind_exposure_factor` (default `0`). The CLI is a separate comparison estimator and does not apply wind adjustments.
+
+The browser GUI estimates segment power and displays altitude-adjusted sea-level power (aSLP) as an estimated value with an approximate low–high range. That range is based on published confidence intervals for group-mean critical-power decline with altitude; it is not an individual-rider prediction interval.
 
 Use `uv add <package>` for runtime dependencies and `uv add --dev <package>` for development dependencies. These commands update `pyproject.toml` and `uv.lock` together.
 
@@ -98,7 +106,8 @@ The segmentation workflow supports:
 
 - draggable breakpoints
 - editable segment boundaries
-- segment classification
+- cyclist paceline position by wheel number
+- optional motorcycle drafting intervals with an estimated gap in metres
 - synchronised 2D and 3D visualisation
 - live analytical updates
 
@@ -111,17 +120,21 @@ The 3D view focuses on:
 
 The 3D rendering layer is implemented through a browser-based Three.js workflow integrated with the local Python backend.
 
+### Drafting assumptions
+
+The GUI offers solo riding, first through fourth wheel in a cyclist paceline, and motorcycle drafting as separate segment choices. The wheel-position drag factors (0.96, 0.53, 0.47, 0.44) come from wind-tunnel measurements for a four-rider uphill formation. They are approximate outside the study's conditions, including its 7.5% gradient and 6 m/s speed.
+
+Motorcycle drafting accepts estimated gaps per interval, with a mean-gap fallback when only one distance is known. The wind-tunnel curve supplies the point estimate; a more draft-favorable CFD-RANS fit supplies a lower aero-coefficient scenario. The GUI shows the resulting modeled-power span. This is a comparison of study data series, not a statistical confidence interval; the paper reports that RANS overpredicts the far-wake effect beyond about 4.8 m. See [the curve-fit notes](docs/motorcycle-drafting-fit.md) for data, fit diagnostics, and limits.
+
 ## Environmental Context Integration
 
-The modelling pipeline supports contextual enrichment through environmental inputs.
-
-This includes:
+Weather samples can adjust wind by segment heading in the GUI and workflow API. The workflow also accepts a constant headwind or tailwind directly. Weather-derived adjustments depend on sample availability, segment timestamps, heading, and wind exposure assumptions.
 
 - wind direction handling
 - wind speed integration
 - route heading interaction
-- exposed versus protected segment modelling
-- contextual adjustment workflows
+- per-segment wind components
+- environmental scenario adjustments
 
 The environmental layer exists primarily to demonstrate context-aware analytical modelling rather than purely static calculations.
 
@@ -163,7 +176,7 @@ climbing_performance/
   aslp.py               altitude-adjusted performance helpers
   gpx.py                GPX parsing and route processing
   metrics.py            core analytical calculations
-  models.py             structured rider, bike, route, and weather models
+  models.py             structured rider, bike, and climb models
   route_hydration.py    GUI-ready route enrichment workflows
   weather.py            environmental context utilities
   workflow.py           scenario orchestration workflows

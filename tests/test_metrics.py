@@ -7,6 +7,7 @@ from climbing_performance.metrics import (
     compute_road_speed,
     compute_vertical_speed,
     air_density_at_altitude,
+    air_density_from_weather,
     estimate_power_components,
     estimate_watts_per_kg,
     summarise_climb_performance,
@@ -42,6 +43,12 @@ def test_air_density_decreases_with_altitude():
     assert sea_level == pytest.approx(1.225, rel=1e-3)
 
 
+def test_weather_air_density_uses_pressure_temperature_and_humidity():
+    dry = air_density_from_weather(15.0, 1013.25, 0.0)
+    humid = air_density_from_weather(15.0, 1013.25, 80.0)
+    assert dry > humid > 0.0
+
+
 def test_estimate_watts_per_kg():
     rider = Rider(mass_kg=70.0)
     result = estimate_watts_per_kg(350.0, rider)
@@ -63,7 +70,7 @@ def test_estimate_power_components_returns_expected_keys():
         avg_altitude_m=1000.0,
     )
 
-    result = estimate_power_components(rider, bike, climb)
+    result = estimate_power_components(rider, bike, climb, air_density_kg_m3=1.225)
 
     assert "power_gravity_w" in result
     assert "power_rolling_w" in result
@@ -80,6 +87,11 @@ def test_estimate_power_components_returns_expected_keys():
     )
 
 
+def test_power_estimate_requires_reference_density_or_weather():
+    with pytest.raises(ValueError, match="Air density requires"):
+        estimate_power_components(Rider(), Bike(), Climb())
+
+
 def test_summarise_climb_performance_contains_all_metrics():
     rider = Rider(mass_kg=70.0)
     bike = Bike(
@@ -94,7 +106,7 @@ def test_summarise_climb_performance_contains_all_metrics():
         avg_altitude_m=500.0,
     )
 
-    result = summarise_climb_performance(rider, bike, climb)
+    result = summarise_climb_performance(rider, bike, climb, air_density_kg_m3=1.225)
 
     expected_keys = {
         "gradient_percent",
@@ -155,8 +167,12 @@ def test_total_power_increases_with_faster_ascent():
         avg_altitude_m=0.0,
     )
 
-    slower_power = estimate_power_components(rider, bike, slower_climb)["total_power_w"]
-    faster_power = estimate_power_components(rider, bike, faster_climb)["total_power_w"]
+    slower_power = estimate_power_components(
+        rider, bike, slower_climb, air_density_kg_m3=1.225
+    )["total_power_w"]
+    faster_power = estimate_power_components(
+        rider, bike, faster_climb, air_density_kg_m3=1.225
+    )["total_power_w"]
 
     assert faster_power > slower_power
     
@@ -177,7 +193,7 @@ def test_gravity_power_matches_hand_calculation():
         avg_altitude_m=0.0,
     )
 
-    result = estimate_power_components(rider, bike, climb)
+    result = estimate_power_components(rider, bike, climb, air_density_kg_m3=1.225)
 
     expected_gravity = (70.0 + 8.0) * 9.81 * (600.0 / 1800.0)
     assert result["power_gravity_w"] == pytest.approx(expected_gravity)
@@ -196,7 +212,7 @@ def test_summarise_full_performance_contains_aslp_metrics():
         avg_altitude_m=1200.0,
     )
 
-    result = summarise_full_performance(rider, bike, climb)
+    result = summarise_full_performance(rider, bike, climb, air_density_kg_m3=1.225)
 
     expected_keys = {
         "gradient_percent",
@@ -208,12 +224,18 @@ def test_summarise_full_performance_contains_aslp_metrics():
         "power_aero_w",
         "total_power_w",
         "watts_per_kg",
-        "observed_power_w",
+        "estimated_power_w",
         "avg_altitude_m",
         "cp_remaining_fraction",
+        "cp_remaining_fraction_low",
+        "cp_remaining_fraction_high",
         "altitude_power_loss_percent",
         "sea_level_equivalent_power_w",
+        "sea_level_equivalent_power_low_w",
+        "sea_level_equivalent_power_high_w",
         "aslp_w_per_kg",
+        "aslp_w_per_kg_low",
+        "aslp_w_per_kg_high",
     }
 
     assert expected_keys.issubset(result.keys())

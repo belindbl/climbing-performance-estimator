@@ -232,6 +232,11 @@ def weather_sample_from_payload(payload: dict[str, Any]) -> WeatherSample:
             if payload.get("wind_gusts_m_s") is not None
             else None
         ),
+        surface_pressure_hpa=(
+            float(payload["surface_pressure_hpa"])
+            if payload.get("surface_pressure_hpa") is not None
+            else None
+        ),
     )
 
 

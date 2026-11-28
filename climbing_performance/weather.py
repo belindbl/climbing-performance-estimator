@@ -22,6 +22,7 @@ class WeatherSample:
     wind_speed_m_s: float
     wind_direction_deg: float
     wind_gusts_m_s: float | None = None
+    surface_pressure_hpa: float | None = None
 
 
 def _kmh_to_ms(value_kmh: float) -> float:
@@ -96,7 +97,8 @@ def fetch_hourly_weather(
             "relative_humidity_2m,"
             "wind_speed_10m,"
             "wind_direction_10m,"
-            "wind_gusts_10m"
+            "wind_gusts_10m,"
+            "surface_pressure"
         ),
         "wind_speed_unit": "ms",
         "temperature_unit": "celsius",
@@ -125,6 +127,7 @@ def fetch_hourly_weather(
         wind_speeds = hourly["wind_speed_10m"]
         wind_directions = hourly["wind_direction_10m"]
         wind_gusts = hourly.get("wind_gusts_10m")
+        pressures = hourly["surface_pressure"]
     except KeyError as exc:
         raise WeatherAPIError(f"Hourly payload missing field: {exc}") from exc
 
@@ -144,6 +147,7 @@ def fetch_hourly_weather(
                 wind_speed_m_s=float(wind_speeds[i]),
                 wind_direction_deg=float(wind_directions[i]),
                 wind_gusts_m_s=gust_value,
+                surface_pressure_hpa=float(pressures[i]),
             )
         )
 
